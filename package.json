@@ -1,0 +1,22 @@
+{
+  "name": "money-scraper",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karshan/money-scraper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/karshan/money-scraper/issues"
+  },
+  "homepage": "https://github.com/karshan/money-scraper#readme",
+  "description": ""
+}
