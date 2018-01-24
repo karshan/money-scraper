@@ -1,4 +1,5 @@
 const CREDS = require('./creds');
+const util = require('./util');
 const puppeteer = require('puppeteer');
 
 // login page
@@ -39,87 +40,7 @@ const DOWNLOAD_BUTTON_SEL = "#download"
 // post download page
 RETURN_TO_DOWNLOAD_BUTTON_SEL = "#downloadOtherActivity"
 
-function debug(x) {
-  console.log("DEBUG: " + x);
-}
-
-// unused util function:
-async function responseLogger(response) {
-  var request = response.request();
-  var responseBody = await response.text();
-  if (!/\/raw\/$/.test(request.url()) && !/dynaTraceMonitor/.test(request.url())) {
-      console.log("======== LOG ========");
-      console.log("url: " + request.url());
-      console.log("method: " + request.method());
-      if (request.postData()) {
-        console.log("request-length: " + request.postData().length);
-        console.log("postData: " + request.postData().substring(0, 1000));
-      }
-      console.log("response-length: " + responseBody.length);
-      console.log("response: " + responseBody.substring(0, 1000));
-      console.log("----------8<---------");
-  }
-}
-
-async function frameWaitAndClick(frame, sel) {
-  try {
-    await frame.waitForSelector(sel, {visible: true});
-    const toClick = await frame.$(sel);
-    await toClick.click();
-  } catch(e) {
-    console.log('FAILED!! frameWaitAndClick(' + sel + '): ' + e);
-    throw e;
-  }
-}
-
-async function waitAndClick(page, sel) {
-  try {
-    debug('waitAndClick START ' + sel);
-    await page.waitForSelector(sel, {visible: true});
-    await page.click(sel);
-    debug('waitAndClick END ' + sel);
-  } catch(e) {
-    console.log('FAILED!! waitAndClick(' + sel + '): ' + e);
-    throw e;
-  }
-}
-
-function promiseTimeout(ms, promise){
-  // Create a promise that rejects in <ms> milliseconds
-  let id;
-  let timeout = new Promise((resolve, reject) => {
-    id = setTimeout(() => {
-      reject('Timed out in '+ ms + 'ms.');
-    }, ms)
-  })
-
-  // Returns a race between our timeout and the passed in promise
-  return Promise.race([
-    promise,
-    timeout
-  ]).then((result) => {
-    clearTimeout(id);
-    return result;
-  })
-}
-
-function waitForResponse(page, predicate) {
-  return promiseTimeout(30000, new Promise(function (resolve, reject) {
-    var responseHandler = function(response) {
-      if (predicate(response.request(), response)) {
-        page.removeListener('response', responseHandler);
-        debug('waitForResponse END ' + response.request().url());
-        resolve();
-      }
-    }
-    page.on('response', responseHandler);
-  }));
-}
-
-function waitForUrlRegex(page, urlRegex) {
-  debug("waitForUrlRegex START " + urlRegex);
-  return waitForResponse(page, (req, resp) => urlRegex.test(req.url()));
-}
+// URL regex's used with waitForUrlRegex()
 
 // https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list
 const ACTIVITY_CARD_LIST_REGEX = new RegExp("/account/activity/card/list$");
@@ -128,51 +49,55 @@ const ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX = new RegExp("/account/activity/downl
 // https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/statementperiod/options/card/list (activity ranges for account)
 const STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX = new RegExp("/account/statementperiod/options/card/list$");
 
+// LoginPage Url TODO: fix this to something that always goes to login.
+// This will open the dashboard if already logged in.
+const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
+
 // _ -> LoginLandingPage
 async function login(page) {
-  await page.goto('https://secure05c.chase.com/web/auth/dashboard');
+  await page.goto(LOGIN_PAGE_URL);
 
   await page.waitForSelector('#' + LOGIN_IFRAME_NAME);
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
 
-  await frameWaitAndClick(logonbox, USERNAME_SEL);
-  debug(USERNAME_SEL + ' resolved');
+  await util.frameWaitAndClick(logonbox, USERNAME_SEL);
+  util.debug(USERNAME_SEL + ' resolved');
   await page.keyboard.type(CREDS.username);
-  
-  await frameWaitAndClick(logonbox, PASSWORD_SEL);
+
+  await util.frameWaitAndClick(logonbox, PASSWORD_SEL);
   await page.keyboard.type(CREDS.password);
 
-  await frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
+  await util.frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
 }
 
 // LoginLandingPage -> DownloadPage
 async function gotoDownloadPage(page) {
-  await waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX);
-  await waitAndClick(page, DOWNLOAD_ACTIVITY_SEL);
+  await util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX);
+  await util.waitAndClick(page, DOWNLOAD_ACTIVITY_SEL);
 }
 
 // DownloadPage -> DownloadPage (downloads CSV's for all accounts)
 async function performDownloads(page) {
-  const accountsPromise = await waitForUrlRegex(page, ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX);
-  await waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+  const accountsPromise = await util.waitForUrlRegex(page, ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX);
+  await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
   await accountsPromise;
 
   await page.waitForSelector(ACC_SEL(0));
   const numAccounts = await page.evaluate((sel) => document.querySelector(sel).children.length, NUM_ACCOUNTS_SEL);
-  debug(numAccounts + " accounts");
+  util.debug(numAccounts + " accounts");
 
   for (var i = 0; i < numAccounts; i++) {
     await page.waitForSelector(ACC_SEL(i));
-    await waitAndClick(page, ACCOUNT_SEL);
-    await waitAndClick(page, ACC_SEL(i));
+    await util.waitAndClick(page, ACCOUNT_SEL);
+    await util.waitAndClick(page, ACC_SEL(i));
 
     // this one is tricky, chase will prefetch for ACC_SEL(0) always,
     // but for other acc's this request will be made after waitAndClick ACC_SEL(i)
     if (i != 0) {
-      await waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+      await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
     }
 
-    await waitAndClick(page, ACTIVITY_RANGE_SEL);
+    await util.waitAndClick(page, ACTIVITY_RANGE_SEL);
     const activityRangeClickResult = await page.evaluate((sel) => {
       var n = document.querySelector(sel).children.length;
       for (var i = 0; i < n; i++) {
@@ -184,14 +109,14 @@ async function performDownloads(page) {
       }
       return false;
     }, ACTIVITY_RANGE_UL_SEL);
-    debug(activityRangeClickResult);
+    util.debug(activityRangeClickResult);
 
     await page.waitFor(1100); // TODO: don't know what actually needs to be waited for, doesn't seem to be a request
-    await waitAndClick(page, DOWNLOAD_BUTTON_SEL);
-    debug("[" + i + "] perhaps something was downloaded, this is Yavascript ¯\\_(ツ)_/¯");
+    await util.waitAndClick(page, DOWNLOAD_BUTTON_SEL);
+    util.debug("[" + i + "] perhaps something was downloaded, this is Yavascript ¯\\_(ツ)_/¯");
 
-    await waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL);
-    await waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+    await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL);
+    await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
   }
 }
 
@@ -216,7 +141,7 @@ async function run() {
   await performDownloads(page);
 
   await browser.close();
-  debug("browser closed");
+  util.debug("browser closed");
 }
 
 run();
