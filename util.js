@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 function debug(x) {
   console.log("DEBUG: " + x);
 }
@@ -68,7 +70,7 @@ function promiseTimeout(ms, promise){
 }
 
 function waitForResponse(page, predicate) {
-  return promiseTimeout(30000, new Promise(function (resolve, reject) {
+  return promiseTimeout(30000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
@@ -85,6 +87,19 @@ function waitForUrlRegex(page, urlRegex) {
   return waitForResponse(page, (req, resp) => urlRegex.test(req.url()));
 }
 
+function waitForFileCreation(dir, fileRegex) {
+  debug(`waitForFileCreation START ${dir}, ${fileRegex}`);
+  return promiseTimeout(30000, new Promise(function(resolve, reject) {
+    const watcher = fs.watch(dir, (eventType, filename) => {
+      if (eventType == "change" && fileRegex.test(filename)) {
+        watcher.close();
+        debug(`waitForFileCreation END ${filename}`);
+        resolve(filename);
+      }
+    });
+  }));
+}
+
 module.exports = {
   responseLogger: responseLogger,
   frameWaitAndClick: frameWaitAndClick,
@@ -92,5 +107,6 @@ module.exports = {
   promiseTimeout: promiseTimeout,
   waitForResponse: waitForResponse,
   waitForUrlRegex: waitForUrlRegex,
+  waitForFileCreation: waitForFileCreation,
   debug: debug
 }

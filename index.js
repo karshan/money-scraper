@@ -1,6 +1,9 @@
 const CREDS = require('./creds');
-const util = require('./util');
 const puppeteer = require('puppeteer');
+const util = require('./util');
+
+const DOWNLOAD_DIR = './downloads/';
+const CSV_REGEX = new RegExp("\.csv$", "i");
 
 // login page
 const LOGIN_IFRAME_NAME = "logonbox"
@@ -49,15 +52,29 @@ const ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX = new RegExp("/account/activity/downl
 // https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/statementperiod/options/card/list (activity ranges for account)
 const STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX = new RegExp("/account/statementperiod/options/card/list$");
 
-// LoginPage Url TODO: fix this to something that always goes to login.
-// This will open the dashboard if already logged in.
+// LoginPage Url
+// Navigating here will open the dashboard if already logged in.
 const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
 
 // _ -> LoginLandingPage
 async function login(page) {
   await page.goto(LOGIN_PAGE_URL);
 
+  /* TODO: it is possible when loading LOGIN_PAGE_URL that we go straight
+   * to LoginLandingPage if we are already logged in. We can check if this
+   * is the case and return immediately if so. Test if this works.
+  const loggedIn = await Promise.race([
+    page.waitForSelector('#' + LOGIN_IFRAME_NAME).then((r) => false),
+    page.waitForSelector(DOWNLOAD_ACTIVITY_SEL).then((r) => true)
+  ]);
+
+  if (loggedIn) {
+    return;
+  }
+   */
+
   await page.waitForSelector('#' + LOGIN_IFRAME_NAME);
+
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
 
   await util.frameWaitAndClick(logonbox, USERNAME_SEL);
@@ -86,6 +103,7 @@ async function performDownloads(page) {
   const numAccounts = await page.evaluate((sel) => document.querySelector(sel).children.length, NUM_ACCOUNTS_SEL);
   util.debug(numAccounts + " accounts");
 
+  var downloadedFiles = [];
   for (var i = 0; i < numAccounts; i++) {
     await page.waitForSelector(ACC_SEL(i));
     await util.waitAndClick(page, ACCOUNT_SEL);
@@ -113,16 +131,18 @@ async function performDownloads(page) {
 
     await page.waitFor(1100); // TODO: don't know what actually needs to be waited for, doesn't seem to be a request
     await util.waitAndClick(page, DOWNLOAD_BUTTON_SEL);
-    util.debug("[" + i + "] perhaps something was downloaded, this is Yavascript ¯\\_(ツ)_/¯");
+
+    downloadedFiles.push(await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX));
 
     await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL);
     await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
   }
+  return downloadedFiles;
 }
 
 async function run() {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
@@ -131,14 +151,15 @@ async function run() {
 
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',
-    downloadPath: './'
+    downloadPath: DOWNLOAD_DIR
   });
 
   await page.setViewport({ width: 800, height: 600 });
 
   await login(page);
   await gotoDownloadPage(page);
-  await performDownloads(page);
+  const downloadedFiles = await performDownloads(page);
+  util.debug('downloaded: ' + JSON.stringify(downloadedFiles));
 
   await browser.close();
   util.debug("browser closed");
