@@ -197,7 +197,7 @@ async function performDownloads(page) {
 
 async function run() {
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
