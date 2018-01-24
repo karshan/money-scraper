@@ -1,3 +1,5 @@
+// TODO: catch exceptions and save screenshot on failure
+
 const CREDS = require('./creds');
 const puppeteer = require('puppeteer');
 const util = require('./util');
@@ -33,7 +35,7 @@ const LANDING_ALL_TRANSACTIONS_SEL = "#container-4-transactionTypeOptions"
 // download page
 const ACCOUNT_SEL = "#header-account-selector"
 const NUM_ACCOUNTS_SEL = "#ul-list-container-account-selector"
-const ACC_SEL = (x) => "#container-primary-" + x + "-account-selector"
+const ACC_SEL = (x) => "#container-" + x + "-account-selector"
 
 const ACTIVITY_RANGE_SEL = "#header-styledSelect1"
 const ACTIVITY_RANGE_UL_SEL = "#ul-list-container-styledSelect1"
@@ -60,9 +62,6 @@ const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
 async function login(page) {
   await page.goto(LOGIN_PAGE_URL);
 
-  /* TODO: it is possible when loading LOGIN_PAGE_URL that we go straight
-   * to LoginLandingPage if we are already logged in. We can check if this
-   * is the case and return immediately if so. Test if this works.
   const loggedIn = await Promise.race([
     page.waitForSelector('#' + LOGIN_IFRAME_NAME).then((r) => false),
     page.waitForSelector(DOWNLOAD_ACTIVITY_SEL).then((r) => true)
@@ -71,9 +70,6 @@ async function login(page) {
   if (loggedIn) {
     return;
   }
-   */
-
-  await page.waitForSelector('#' + LOGIN_IFRAME_NAME);
 
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
 
@@ -108,6 +104,7 @@ async function performDownloads(page) {
     await page.waitForSelector(ACC_SEL(i));
     await util.waitAndClick(page, ACCOUNT_SEL);
     await util.waitAndClick(page, ACC_SEL(i));
+    const accountId = await page.evaluate((sel) => document.querySelector(sel).rel, ACC_SEL(i));
 
     // this one is tricky, chase will prefetch for ACC_SEL(0) always,
     // but for other acc's this request will be made after waitAndClick ACC_SEL(i)
@@ -132,7 +129,10 @@ async function performDownloads(page) {
     await page.waitFor(1100); // TODO: don't know what actually needs to be waited for, doesn't seem to be a request
     await util.waitAndClick(page, DOWNLOAD_BUTTON_SEL);
 
-    downloadedFiles.push(await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX));
+    downloadedFiles.push({
+      accountId: accountId,
+      filename: await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX)
+    });
 
     await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL);
     await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
@@ -159,7 +159,7 @@ async function run() {
   await login(page);
   await gotoDownloadPage(page);
   const downloadedFiles = await performDownloads(page);
-  util.debug('downloaded: ' + JSON.stringify(downloadedFiles));
+  util.debug('downloaded: ' + JSON.stringify(downloadedFiles, null, 2));
 
   await browser.close();
   util.debug("browser closed");

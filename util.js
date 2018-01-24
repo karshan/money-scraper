@@ -50,12 +50,18 @@ async function waitAndClick(page, sel) {
   }
 }
 
-function promiseTimeout(ms, promise){
+function promiseTimeout(ms, promise, nofail){
+  if (nofail === undefined) { nofail = false; }
   // Create a promise that rejects in <ms> milliseconds
   let id;
   let timeout = new Promise((resolve, reject) => {
     id = setTimeout(() => {
-      reject('Timed out in '+ ms + 'ms.');
+      const msg = 'Timed out in '+ ms + 'ms.';
+      if (nofail) {
+        resolve(msg);
+      } else {
+        reject(msg);
+      }
     }, ms)
   })
 
@@ -70,7 +76,7 @@ function promiseTimeout(ms, promise){
 }
 
 function waitForResponse(page, predicate) {
-  return promiseTimeout(30000, new Promise(function(resolve, reject) {
+  return promiseTimeout(15000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
@@ -79,7 +85,7 @@ function waitForResponse(page, predicate) {
       }
     }
     page.on('response', responseHandler);
-  }));
+  }), true);
 }
 
 function waitForUrlRegex(page, urlRegex) {
@@ -89,7 +95,7 @@ function waitForUrlRegex(page, urlRegex) {
 
 function waitForFileCreation(dir, fileRegex) {
   debug(`waitForFileCreation START ${dir}, ${fileRegex}`);
-  return promiseTimeout(30000, new Promise(function(resolve, reject) {
+  return promiseTimeout(15000, new Promise(function(resolve, reject) {
     const watcher = fs.watch(dir, (eventType, filename) => {
       if (eventType == "change" && fileRegex.test(filename)) {
         watcher.close();
