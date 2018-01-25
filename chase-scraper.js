@@ -214,7 +214,6 @@ async function scrape(creds) {
     await gotoDownloadPage(page, logger);
 
     const downloadedFilenames = await performDownloads(page, logger);
-    logger.log({ msg: 'downloaded', obj: downloadedFilenames });
 
     const downloadedData = await Promise.all(downloadedFilenames.map(async(a) => {
       return {
@@ -242,7 +241,7 @@ async function scrape(creds) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
-        exception: e.toString(),
+        exception: (typeof e === "object") ? JSON.stringify(e) : e.toString(),
         screenshot: screenshot
       });
 
