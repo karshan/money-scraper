@@ -1,7 +1,9 @@
+const https = require('https');
 const Logger = require('./logger');
 const puppeteer = require('puppeteer');
 const util = require('./util');
 
+const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
 const CSV_REGEX = new RegExp("\.csv$", "i");
 
@@ -146,25 +148,35 @@ async function performDownloads(page, logger) {
     await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
   }
 
+  const cookies = await page.cookies();
+
   for (var i = 0; i < downloadedFiles.length; i++) {
     const a = downloadedFiles[i];
-    const resPromise = util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
-    page.evaluate((accountId) => {
-      fetch('https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list', {
-        'credentials': 'include',
-        'method': 'POST',
-        'headers': new Headers({
+
+    jsonTransactions = await new Promise(function(resolve, reject) {
+      const body = `accountId=${a.accountId}&filterTranType=ALL&statementPeriodId=ALL`;
+      var response = "";
+      const req = https.request({
+        hostname: 'secure05c.chase.com',
+        port: 443,
+        path: '/svc/rr/accounts/secure/v1/account/activity/card/list',
+        method: 'POST',
+        headers: {
+          'User-Agent': USER_AGENT,
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
           'Accept': 'application/json',
+          'Cookie': cookies.map((a) => a.name + '=' + a.value).join('; ') ,
           'x-jpmc-csrf-token': 'NONE'
-        }),
-        'body': `accountId=${accountId}&filterTranType=ALL&statementPeriodId=ALL`
-      })
-    }, a.accountId)
-    const res = await resPromise;
-    logger.log(`RES = ${res}`)
-    downloadedFiles[i].jsonTransactions = res.responseBody;
-    logger.log({accId: downloadedFiles[i].accountId, json: downloadedFiles[i].jsonTransactions});
+        }
+      }, function(res) {
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { response = response + chunk });
+        res.on('end', () => resolve(response));
+      });
+      req.write(body);
+    });
+    downloadedFiles[i].jsonTransactions = jsonTransactions;
   }
   return downloadedFiles;
 }
@@ -183,12 +195,12 @@ async function scrape(creds) {
    * cookies and browser cache will not be saved.
    */
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
 
-  await page.setUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36");
+  await page.setUserAgent(USER_AGENT);
 
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',

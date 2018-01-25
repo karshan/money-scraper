@@ -75,11 +75,10 @@ function promiseTimeout(ms, promise){
 function waitForResponse(page, predicate, logger) {
   return promiseTimeout(15000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
-      //const responseBody = await response.text();
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
         logger.log(`waitForResponse(url: ${response.request().url()}) END`);
-        resolve({ response: response, responseBody: 'lol' });
+        resolve();
       }
     }
     page.on('response', responseHandler);
