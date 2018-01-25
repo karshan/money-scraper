@@ -1,6 +1,5 @@
-// TODO: catch exceptions and save screenshot on failure
-
 const CREDS = require('./creds');
+const Logger = require('./logger');
 const puppeteer = require('puppeteer');
 const util = require('./util');
 
@@ -59,9 +58,10 @@ const STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX = new RegExp("/account/statementpe
 const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
 
 // _ -> LoginLandingPage
-async function login(page) {
+async function login(page, logger) {
   await page.goto(LOGIN_PAGE_URL);
 
+  // Detect if we are already logged in. Could also use page.title() probably
   const loggedIn = await Promise.race([
     page.waitForSelector('#' + LOGIN_IFRAME_NAME).then((r) => false),
     page.waitForSelector(DOWNLOAD_ACTIVITY_SEL).then((r) => true)
@@ -74,7 +74,7 @@ async function login(page) {
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
 
   await util.frameWaitAndClick(logonbox, USERNAME_SEL);
-  util.debug(USERNAME_SEL + ' resolved');
+  logger.log(USERNAME_SEL + ' resolved');
   await page.keyboard.type(CREDS.username);
 
   await util.frameWaitAndClick(logonbox, PASSWORD_SEL);
@@ -84,65 +84,75 @@ async function login(page) {
 }
 
 // LoginLandingPage -> DownloadPage
-async function gotoDownloadPage(page) {
-  await util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX);
-  await util.waitAndClick(page, DOWNLOAD_ACTIVITY_SEL);
+async function gotoDownloadPage(page, logger) {
+  await util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
+
+  try {
+    await util.waitAndClick(page, DOWNLOAD_ACTIVITY_SEL, logger);
+  } catch(e) {
+    throw {
+      msg: `waitAndClick ${DOWNLOAD_ACTIVITY_SEL} failed. Probably because login required 2 factor`,
+      exception: e
+    };
+  }
 }
 
 // DownloadPage -> DownloadPage (downloads CSV's for all accounts)
-async function performDownloads(page) {
-  const accountsPromise = await util.waitForUrlRegex(page, ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX);
-  await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+// returns [{accountId, filename}]
+async function performDownloads(page, logger) {
+  const accountsPromise = await util.waitForUrlRegex(page, ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX, logger);
+  await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
   await accountsPromise;
 
   await page.waitForSelector(ACC_SEL(0));
   const numAccounts = await page.evaluate((sel) => document.querySelector(sel).children.length, NUM_ACCOUNTS_SEL);
-  util.debug(numAccounts + " accounts");
+  logger.log(numAccounts + " accounts");
 
   var downloadedFiles = [];
   for (var i = 0; i < numAccounts; i++) {
     await page.waitForSelector(ACC_SEL(i));
-    await util.waitAndClick(page, ACCOUNT_SEL);
-    await util.waitAndClick(page, ACC_SEL(i));
+    await util.waitAndClick(page, ACCOUNT_SEL, logger);
+    await util.waitAndClick(page, ACC_SEL(i), logger);
     const accountId = await page.evaluate((sel) => document.querySelector(sel).rel, ACC_SEL(i));
 
     // this one is tricky, chase will prefetch for ACC_SEL(0) always,
     // but for other acc's this request will be made after waitAndClick ACC_SEL(i)
     if (i != 0) {
-      await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+      await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
     }
 
-    await util.waitAndClick(page, ACTIVITY_RANGE_SEL);
+    await util.waitAndClick(page, ACTIVITY_RANGE_SEL, logger);
     const activityRangeClickResult = await page.evaluate((sel) => {
       var n = document.querySelector(sel).children.length;
       for (var i = 0; i < n; i++) {
         var node = document.querySelector(sel).querySelectorAll('li > a')[i];
         if (/All transactions/.test(node.innerText)) {
-          setTimeout(((node_) => (() => node_.click()))(node), 1000) // TODO: don't know what actually needs to be waited here for
+          setTimeout(((node_) => (() => node_.click()))(node), 1000) // TODO: don't know what actually needs to be waited for
           return node.innerText;
         }
       }
       return false;
     }, ACTIVITY_RANGE_UL_SEL);
-    util.debug(activityRangeClickResult);
+    logger.log(activityRangeClickResult);
 
     await page.waitFor(1100); // TODO: don't know what actually needs to be waited for, doesn't seem to be a request
-    await util.waitAndClick(page, DOWNLOAD_BUTTON_SEL);
+    await util.waitAndClick(page, DOWNLOAD_BUTTON_SEL, logger);
 
     downloadedFiles.push({
       accountId: accountId,
-      filename: await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX)
+      filename: await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger)
     });
 
-    await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL);
-    await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX);
+    await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL, logger);
+    await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
   }
   return downloadedFiles;
 }
 
 async function run() {
+  var logger = new Logger(false);
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
@@ -156,13 +166,21 @@ async function run() {
 
   await page.setViewport({ width: 800, height: 600 });
 
-  await login(page);
-  await gotoDownloadPage(page);
-  const downloadedFiles = await performDownloads(page);
-  util.debug('downloaded: ' + JSON.stringify(downloadedFiles, null, 2));
+  try {
+    await login(page, logger);
+    await gotoDownloadPage(page, logger);
+
+    const downloadedFiles = await performDownloads(page, logger);
+    logger.log({ msg: 'downloaded', obj: downloadedFiles });
+  } catch(e) {
+    logger.log({
+      msg: `SCRAPER FAILURE`,
+      exception: e,
+      screenshot: (await page.screenshot()).toString('base64')
+    });
+  }
 
   await browser.close();
-  util.debug("browser closed");
 }
 
 run();

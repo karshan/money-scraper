@@ -1,9 +1,5 @@
 const fs = require('fs');
 
-function debug(x) {
-  console.log("DEBUG: " + x);
-}
-
 // log network requests made by puppeteer
 // usage: page.on('response', responseLogger);
 async function responseLogger(response) {
@@ -31,37 +27,36 @@ async function frameWaitAndClick(frame, sel) {
     const toClick = await frame.$(sel);
     await toClick.click();
   } catch(e) {
-    console.log('FAILED!! frameWaitAndClick(' + sel + '): ' + e);
-    throw e;
+    throw {
+      msg: `frameWaitAndClick(${sel}) FAILED`,
+      exception: e
+    };
   }
 }
 
 // wait for an element identified by a CSS selector (sel) in a puppeteer page
 // to appear and then click it.
-async function waitAndClick(page, sel) {
+async function waitAndClick(page, sel, logger) {
   try {
-    debug('waitAndClick START ' + sel);
+    logger.log(`waitAndClick(${sel}) START`);
     await page.waitForSelector(sel, {visible: true});
     await page.click(sel);
-    debug('waitAndClick END ' + sel);
+    logger.log(`waitAndClick(${sel}) END`);
   } catch(e) {
-    console.log('FAILED!! waitAndClick(' + sel + '): ' + e);
-    throw e;
+    throw {
+      msg: `waitAndClick(${sel}) FAILED`,
+      exception: e
+    };
   }
 }
 
-function promiseTimeout(ms, promise, nofail){
-  if (nofail === undefined) { nofail = false; }
+function promiseTimeout(ms, promise){
   // Create a promise that rejects in <ms> milliseconds
   let id;
   let timeout = new Promise((resolve, reject) => {
     id = setTimeout(() => {
       const msg = 'Timed out in '+ ms + 'ms.';
-      if (nofail) {
-        resolve(msg);
-      } else {
-        reject(msg);
-      }
+      reject(msg);
     }, ms)
   })
 
@@ -75,12 +70,12 @@ function promiseTimeout(ms, promise, nofail){
   })
 }
 
-function waitForResponse(page, predicate) {
+function waitForResponse(page, predicate, logger) {
   return promiseTimeout(15000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
-        debug('waitForResponse END ' + response.request().url());
+        logger.log(`waitForResponse(url: ${response.request().url()}) END`);
         resolve();
       }
     }
@@ -88,18 +83,21 @@ function waitForResponse(page, predicate) {
   }), true);
 }
 
-function waitForUrlRegex(page, urlRegex) {
-  debug("waitForUrlRegex START " + urlRegex);
-  return waitForResponse(page, (req, resp) => urlRegex.test(req.url()));
+function waitForUrlRegex(page, urlRegex, logger) {
+  logger.log(`waitForUrlRegex(${urlRegex}) START`);
+  return waitForResponse(page, (req, resp) => urlRegex.test(req.url()), logger).catch((e) => {
+    logger.log(`waitForUrlRegex(${urlRegex}) TIMEOUT`);
+    return e;
+  });
 }
 
-function waitForFileCreation(dir, fileRegex) {
-  debug(`waitForFileCreation START ${dir}, ${fileRegex}`);
+function waitForFileCreation(dir, fileRegex, logger) {
+  logger.log(`waitForFileCreation(${dir}, ${fileRegex}) START`);
   return promiseTimeout(15000, new Promise(function(resolve, reject) {
     const watcher = fs.watch(dir, (eventType, filename) => {
       if (eventType == "change" && fileRegex.test(filename)) {
         watcher.close();
-        debug(`waitForFileCreation END ${filename}`);
+        logger.log(`waitForFileCreation(filename: ${filename}) END`);
         resolve(filename);
       }
     });
@@ -114,5 +112,4 @@ module.exports = {
   waitForResponse: waitForResponse,
   waitForUrlRegex: waitForUrlRegex,
   waitForFileCreation: waitForFileCreation,
-  debug: debug
 }
