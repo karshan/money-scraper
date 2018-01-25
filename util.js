@@ -2,20 +2,22 @@ const fs = require('fs');
 
 // log network requests made by puppeteer
 // usage: page.on('response', responseLogger);
-async function responseLogger(response) {
-  var request = response.request();
-  var responseBody = await response.text();
-  if (!/\/raw\/$/.test(request.url()) && !/dynaTraceMonitor/.test(request.url())) {
-      console.log("======== LOG ========");
-      console.log("url: " + request.url());
-      console.log("method: " + request.method());
-      if (request.postData()) {
-        console.log("request-length: " + request.postData().length);
-        console.log("postData: " + request.postData().substring(0, 1000));
-      }
-      console.log("response-length: " + responseBody.length);
-      console.log("response: " + responseBody.substring(0, 1000));
-      console.log("----------8<---------");
+function responseLogger(logger) {
+  return async function(response) {
+    var request = response.request();
+    var responseBody = await response.text();
+    if (!/\/raw\/$/.test(request.url()) && !/dynaTraceMonitor/.test(request.url())) {
+        logger.log({
+          url: request.url(),
+          method: request.method(),
+          responseLength: responseBody.length,
+          response: responseBody.substring(0, 1000)
+        });
+        /*if (request.postData()) {
+          console.log("request-length: " + request.postData().length);
+          console.log("postData: " + request.postData().substring(0, 1000));
+        }*/
+    }
   }
 }
 
@@ -73,10 +75,11 @@ function promiseTimeout(ms, promise){
 function waitForResponse(page, predicate, logger) {
   return promiseTimeout(15000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
+      //const responseBody = await response.text();
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
         logger.log(`waitForResponse(url: ${response.request().url()}) END`);
-        resolve();
+        resolve({ response: response, responseBody: 'lol' });
       }
     }
     page.on('response', responseHandler);

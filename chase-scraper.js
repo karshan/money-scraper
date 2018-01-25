@@ -97,7 +97,7 @@ async function gotoDownloadPage(page, logger) {
 }
 
 // DownloadPage -> DownloadPage (downloads CSV's for all accounts)
-// returns [{accountId, filename}]
+// returns [{accountId, filename, jsonTransactions}]
 async function performDownloads(page, logger) {
   const accountsPromise = await util.waitForUrlRegex(page, ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX, logger);
   await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
@@ -145,6 +145,27 @@ async function performDownloads(page, logger) {
     await util.waitAndClick(page, RETURN_TO_DOWNLOAD_BUTTON_SEL, logger);
     await util.waitForUrlRegex(page, STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX, logger);
   }
+
+  for (var i = 0; i < downloadedFiles.length; i++) {
+    const a = downloadedFiles[i];
+    const resPromise = util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
+    page.evaluate((accountId) => {
+      fetch('https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list', {
+        'credentials': 'include',
+        'method': 'POST',
+        'headers': new Headers({
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'x-jpmc-csrf-token': 'NONE'
+        }),
+        'body': `accountId=${accountId}&filterTranType=ALL&statementPeriodId=ALL`
+      })
+    }, a.accountId)
+    const res = await resPromise;
+    logger.log(`RES = ${res}`)
+    downloadedFiles[i].jsonTransactions = res.responseBody;
+    logger.log({accId: downloadedFiles[i].accountId, json: downloadedFiles[i].jsonTransactions});
+  }
   return downloadedFiles;
 }
 
@@ -162,7 +183,7 @@ async function scrape(creds) {
    * cookies and browser cache will not be saved.
    */
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
@@ -183,11 +204,12 @@ async function scrape(creds) {
     const downloadedFilenames = await performDownloads(page, logger);
     logger.log({ msg: 'downloaded', obj: downloadedFilenames });
 
-    const downloadedFiles = await Promise.all(downloadedFilenames.map(async(a) => {
+    const downloadedData = await Promise.all(downloadedFilenames.map(async(a) => {
       return {
         accountId: a.accountId,
         filename: a.filename,
-        contents: (await util.readFile(DOWNLOAD_DIR + a.filename)).toString()
+        contents: (await util.readFile(DOWNLOAD_DIR + a.filename)).toString(),
+        jsonTransactions: a.jsonTransactions
       }
     }));
 
@@ -197,7 +219,7 @@ async function scrape(creds) {
 
     return {
       ok: true,
-      downloadedFiles: downloadedFiles,
+      downloadedData: downloadedData,
       log: logger.getLog()
     };
   } catch(e) {
