@@ -29,7 +29,7 @@ async function frameWaitAndClick(frame, sel) {
   } catch(e) {
     throw {
       msg: `frameWaitAndClick(${sel}) FAILED`,
-      exception: e
+      exception: e.toString()
     };
   }
 }
@@ -45,7 +45,7 @@ async function waitAndClick(page, sel, logger) {
   } catch(e) {
     throw {
       msg: `waitAndClick(${sel}) FAILED`,
-      exception: e
+      exception: e.toString()
     };
   }
 }
@@ -104,6 +104,24 @@ function waitForFileCreation(dir, fileRegex, logger) {
   }));
 }
 
+function readFile(filename) {
+  return new Promise(function(resolve, reject) {
+    fs.readFile(filename, (err, data) => {
+      if(err) reject(err);
+      resolve(data)
+    })
+  })
+}
+
+function unlink(filename) {
+  return new Promise(function(resolve, reject) {
+    fs.unlink(filename, (err) => {
+      if (err) reject(err);
+      resolve();
+    })
+  });
+}
+
 module.exports = {
   responseLogger: responseLogger,
   frameWaitAndClick: frameWaitAndClick,
@@ -112,4 +130,6 @@ module.exports = {
   waitForResponse: waitForResponse,
   waitForUrlRegex: waitForUrlRegex,
   waitForFileCreation: waitForFileCreation,
+  readFile: readFile,
+  unlink: unlink
 }
