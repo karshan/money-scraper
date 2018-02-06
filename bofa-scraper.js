@@ -51,7 +51,10 @@ async function login(page, creds, logger) {
 
   const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
 
-  const challengeAnswer = creds.secretQuestionAnswers.filter((a) => new RegExp(a[0], "i").test(challengeQuestion))[0][1];
+  const challengeKey = creds.secretQuestionAnswers.keys.filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
+  if (typeof challengeKey !== "string") throw `no answer for challenge ${challengeQuestion}`
+
+  const challengeAnswer = creds.secretQuestionAnswers[challengeKey];
 
   if (typeof challengeAnswer !== "string") throw "couldn't find the answer";
 
