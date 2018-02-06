@@ -139,7 +139,7 @@ async function performDownloads(page, logger) {
       name: nameBalance[i].name,
       balance: nameBalance[i].balance,
       csv: csvContents,
-      type: accountType
+      _type: accountType
     });
 
     const navigationPromise = page.waitForNavigation();
