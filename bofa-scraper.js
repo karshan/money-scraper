@@ -2,6 +2,7 @@ const https = require('https');
 const Logger = require('./logger');
 const puppeteer = require('puppeteer');
 const util = require('./util');
+const url = require('url');
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
@@ -85,9 +86,14 @@ async function performDownloads(page, logger) {
       return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
     }, ACCOUNTS_SEL, i);
 
+    const accountHref = await page.evaluate((sel, _i) => {
+      return document.querySelectorAll(sel)[_i].href;
+    }, ACCOUNTS_SEL, i);
+
     nameBalance.push({
       name: accountName,
-      balance: accountBalance
+      balance: accountBalance,
+      accountId: url.parse(accountHref, true).query.adx
     });
   }
 
@@ -138,6 +144,7 @@ async function performDownloads(page, logger) {
     downloadedData.push({
       name: nameBalance[i].name,
       balance: nameBalance[i].balance,
+      accountId: nameBalance[i].accountId,
       csv: csvContents,
       _type: accountType
     });
