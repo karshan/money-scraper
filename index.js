@@ -20,4 +20,4 @@ app.post('/bofa', (req, res) => {
   });
 });
 
-app.listen(8000, () => console.log(`money-scraper listening on ${SOCKET}`))
+app.listen(8002, () => console.log(`money-scraper listening on ${SOCKET}`))
