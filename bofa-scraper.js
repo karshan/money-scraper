@@ -19,44 +19,12 @@ const REMEMBER_SEL = "#yes-recognize"; // yes remember this computer
 const CONTINUE_BUTTON_SEL = "#verify-cq-submit";
 
 // login landing page (first page after login)
-const ACCOUNT_ITEM_SEL = ".AccountItem";
-/*
-document.querySelectorAll('.AccountItem > .AccountName > a')[0].innerText
-"BofA Core Checking - 6150"
-document.querySelectorAll('.AccountItem > .AccountBalance > .balanceValue')[0].innerText
-"$7,957.74"
-*/
+const ACCOUNTS_SEL = ".AccountItem > .AccountName > a";
 
-
-// landing page (first page after login)
-const DOWNLOAD_ACTIVITY_SEL = "#downloadActivityIcon"
-const LANDING_TRANSACTIONS_DROPDOWN_SEL = "#header-transactionTypeOptions"
-const LANDING_ALL_TRANSACTIONS_SEL = "#container-4-transactionTypeOptions"
-
-// download page
-const ACCOUNT_SEL = "#header-account-selector"
-const NUM_ACCOUNTS_SEL = "#ul-list-container-account-selector"
-const ACC_SEL = (x) => "#container-" + x + "-account-selector"
-
-const ACTIVITY_RANGE_SEL = "#header-styledSelect1"
-const ACTIVITY_RANGE_UL_SEL = "#ul-list-container-styledSelect1"
-
-const DOWNLOAD_BUTTON_SEL = "#download"
-
-// post download page
-RETURN_TO_DOWNLOAD_BUTTON_SEL = "#downloadOtherActivity"
-
-// URL regex's used with waitForUrlRegex()
-
-// https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list
-const ACTIVITY_CARD_LIST_REGEX = new RegExp("/account/activity/card/list$");
-// https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/download/options/list (account list for dropdown?)
-const ACTIVITY_DOWNLOAD_OPTIONS_LIST_REGEX = new RegExp("/account/activity/download/options/list$");
-// https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/statementperiod/options/card/list (activity ranges for account)
-const STATEMENTPERIOD_OPTIONS_CARD_LIST_REGEX = new RegExp("/account/statementperiod/options/card/list$");
+// From particular account page back to overview (login landing) page
+const BACK_TO_ACCOUNT_SEL = "[name=onh_accounts]";
 
 // LoginPage Url
-// Navigating here will open the dashboard if already logged in.
 const LOGIN_PAGE_URL = 'https://bankofamerica.com';
 
 // _ -> LoginLandingPage
@@ -74,13 +42,12 @@ async function login(page, creds, logger) {
 
   await page.waitForNavigation();
 
-  // TODO do challenge only if asked (race with .AccountItem)
   const challenged = await Promise.race([
-    page.waitForSelector(ACCOUNT_ITEM_SEL).then((r) => false),
+    page.waitForSelector(ACCOUNTS_SEL).then((r) => false),
     page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => true)
   ])
-  
-  if (!challenged) return;
+
+  if (challenged === false) return;
 
   const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
 
@@ -94,31 +61,97 @@ async function login(page, creds, logger) {
   await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
 }
 
+//                   |---repeat for each account---|
+//                   v                             ^
+// LoginLandingPage -> AccountPage -> Download CSV -> LoginLandingPage
 async function performDownloads(page, logger) {
-  await page.waitForSelector(ACCOUNT_ITEM_SEL);
+  await page.waitForSelector(ACCOUNTS_SEL);
 
-  const numAccounts = await page.evaluate(() => {
-    document.querySelectorAll('.AccountItem > .AccountName > a').length;
-  });
-  logger("numAccounts: " + numAccounts);
+  const numAccounts = await page.evaluate((sel) => {
+    return document.querySelectorAll(sel).length;
+  }, ACCOUNTS_SEL);
+  logger.log("numAccounts: " + numAccounts);
 
-  for (var i = 0; i < 
+  var nameBalance = []
+  for (var i = 0; i < numAccounts; i++) {
+    const accountName = await page.evaluate((sel, _i) => {
+      return document.querySelectorAll(sel)[_i].innerText;
+    }, ACCOUNTS_SEL, i);
 
-  await page.waitForNavigation();
-  await page.evaluate(() => {
-    document.querySelector('#depositDownLink > a').click()
-    document.querySelector('#cust-date').click()
-    document.querySelector('#start-date').value = '01/01/2017';
-    document.querySelector('#end-date').value = '01/01/2018';
-    document.querySelector('#select_filetype').value = "csv"
-    document.querySelector('.submit-download').click()
-  });
+    const accountBalance = await page.evaluate((sel, _i) => {
+      return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
+    }, ACCOUNTS_SEL, i);
+
+    nameBalance.push({
+      name: accountName,
+      balance: accountBalance
+    });
+  }
+
+  var downloadedData = []
+  for (var i = 0; i < numAccounts; i++) {
+    await page.waitForSelector(ACCOUNTS_SEL);
+
+    await page.evaluate((sel, _i) => {
+      document.querySelectorAll(sel)[_i].click();
+    }, ACCOUNTS_SEL, i);
+    logger.log(`going to account ${i}`);
+
+    await page.waitForNavigation();
+
+    /*
+     * another way to figure out if debit or credit account:
+     * > document.querySelectorAll(ACCOUNTS_SEL)[0].parentNode.parentNode.classList
+     * > DOMTokenList(2) ["AccountItem", "AccountItemDeposit", value: "AccountItem AccountItemDeposit"]
+     */
+    const accountType = await Promise.race([
+      page.waitForSelector('#depositDownLink > a').then((r) => 'DEBIT'),
+      page.waitForSelector('#makePaymentWidget').then((r) => 'CREDIT')
+    ])
+
+    if (accountType === 'DEBIT') {
+      await page.evaluate(() => {
+        document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
+        // REMOVE to download CURRENT TRANSACTIONS {
+        document.querySelector('#cust-date').click();
+        document.querySelector('#start-date').value = '01/01/2017';
+        document.querySelector('#end-date').value = '01/01/2018';
+        // } REMOVE to download CURRENT TRANSACTIONS
+        document.querySelector('#select_filetype').value = "csv";
+        document.querySelector('.submit-download').click();
+      });
+    } else if (accountType === 'CREDIT') {
+      await page.evaluate(() => {
+        document.querySelector('[name=download_transactions_top]').click();
+        // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
+        document.querySelector('#select_filetype').value = "&formatType=csv";
+        document.querySelector('.submit-download').click();
+      });
+    }
+    const csvFilename = await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
+    const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
+    await util.unlink(DOWNLOAD_DIR + csvFilename);
+
+    downloadedData.push({
+      name: nameBalance[i].name,
+      balance: nameBalance[i].balance,
+      csv: csvContents,
+      type: accountType
+    });
+
+    const navigationPromise = page.waitForNavigation();
+    util.waitAndClick(page, BACK_TO_ACCOUNT_SEL, logger); // no need to await here since waitForNavigation
+    await navigationPromise;
+  }
+  return downloadedData;
 }
 
 async function scrape(creds) {
-  var logger = new Logger(true);
+  var logger = new Logger(false);
 
-  if (typeof creds.username !== "string" || typeof creds.password !== "string") {
+  if (typeof creds.username !== "string" ||
+      typeof creds.password !== "string" ||
+      typeof creds.secretQuestionAnswers !== "object") {
     return { ok: false, error: 'bad creds' };
   }
 
@@ -129,13 +162,16 @@ async function scrape(creds) {
    * cookies and browser cache will not be saved.
    */
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
 
   await page.setUserAgent(USER_AGENT);
 
+  // FIXME a fixed download_dir is a problem for concurrent requests
+  // because headless chrome doesn't download to filename (1) if
+  // filename exists for some reason.
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',
     downloadPath: DOWNLOAD_DIR
@@ -143,23 +179,9 @@ async function scrape(creds) {
 
   await page.setViewport({ width: 1920, height: 1080 });
 
-  //try {
+  try {
     await login(page, creds, logger);
-    const downloadedFilenames = await performDownloads(page, logger);
-/*
-
-    const downloadedData = await Promise.all(downloadedFilenames.map(async(a) => {
-      return {
-        accountId: a.accountId,
-        filename: a.filename,
-        contents: (await util.readFile(DOWNLOAD_DIR + a.filename)).toString(),
-        jsonTransactions: a.jsonTransactions
-      }
-    }));
-
-    await Promise.all(downloadedFilenames.map(async(a) =>
-      await util.unlink(DOWNLOAD_DIR + a.filename))
-    );
+    const downloadedData = await performDownloads(page, logger);
 
     return {
       ok: true,
@@ -174,7 +196,7 @@ async function scrape(creds) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
-        exception: (typeof e === "object") ? JSON.stringify(e) : e.toString(),
+        exception: (e.toString() === "[object Object]") ? JSON.stringify(e) : e.toString(),
         screenshot: screenshot
       });
 
@@ -183,7 +205,6 @@ async function scrape(creds) {
   } finally {
     await browser.close();
   }
-*/
 }
 
 module.exports = {
