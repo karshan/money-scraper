@@ -82,6 +82,9 @@ async function performDownloads(page, logger) {
       return document.querySelectorAll(sel)[_i].innerText;
     }, ACCOUNTS_SEL, i);
 
+    // FIXME: This balance includes pending transactions that are not returned
+    // by this scraper. For debit this can be fixed by not returning a balance
+    // since the correct balance is included in the CSV. for credit ¯\_(ツ)_/¯
     const accountBalance = await page.evaluate((sel, _i) => {
       return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
     }, ACCOUNTS_SEL, i);
@@ -121,11 +124,11 @@ async function performDownloads(page, logger) {
     if (accountType === 'DEBIT') {
       await page.evaluate(() => {
         document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
-        // REMOVE to download CURRENT TRANSACTIONS {
+        /* Download transactions for specific dates: {
         document.querySelector('#cust-date').click();
-        document.querySelector('#start-date').value = '01/01/2017';
-        document.querySelector('#end-date').value = '01/01/2018';
-        // } REMOVE to download CURRENT TRANSACTIONS
+        document.querySelector('#start-date').value = '03/01/2014';
+        document.querySelector('#end-date').value = '02/06/2018';
+        } */
         document.querySelector('#select_filetype').value = "csv";
         document.querySelector('.submit-download').click();
       });
