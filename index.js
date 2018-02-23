@@ -3,21 +3,40 @@ const chaseScraper = require('./chase-scraper');
 const bofaScraper = require('./bofa-scraper');
 const express = require('express');
 const app = express();
+const fetch = require('node-fetch');
+
 
 const SOCKET = "scraper.sock";
 
+const postToWebhook = webhookURL => result => {
+  const config = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    body: JSON.stringify(result)
+  }
+  return fetch(webhookURL, config)
+}
+
 app.use(bodyParser.json());
 
-app.post('/chase', (req, res) => {
-  chaseScraper.scrape(req.body).then((result) => {
-    res.send(result);
-  });
+app.post('/chase', async (req, res) => {
+  chaseScraper
+  .scrape(req.body)
+  .then(postToWebhook(req.body.webhookURL))
+  .then(res => res.json())
+  .catch(err => console.log(err))
+  res.send(`It's happening Chase`);
 });
 
-app.post('/bofa', (req, res) => {
-  bofaScraper.scrape(req.body).then((result) => {
-    res.send(result);
-  });
+app.post('/bofa', async (req, res) => {
+  bofaScraper
+  .scrape(req.body)
+  .then(postToWebhook(req.body.webhookURL))
+  .then(res => res.json())
+  .catch(err => console.log(err))
+  res.send(`It's happening BofA`);
 });
 
 app.listen(8002, () => console.log(`money-scraper listening on ${SOCKET}`))
