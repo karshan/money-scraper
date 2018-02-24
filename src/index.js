@@ -1,3 +1,4 @@
+// @flow
 const bodyParser = require('body-parser');
 const chaseScraper = require('./chase-scraper');
 const bofaScraper = require('./bofa-scraper');
@@ -39,4 +40,4 @@ app.post('/bofa', async (req, res) => {
   res.send(`It's happening BofA`);
 });
 
-app.listen(8002, () => console.log(`money-scraper listening on ${SOCKET}`))
+app.listen(8003, () => console.log(`money-scraper listening on ${SOCKET}`))

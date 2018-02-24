@@ -3,3 +3,5 @@ package-lock.json
 node_modules/
 chrome-profile/
 *.CSV
+lib/
+.DS_store

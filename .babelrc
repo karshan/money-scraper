@@ -1,0 +1,4 @@
+{
+  "presets": ["flow"],
+  "ignore": ["node_modules"]
+}

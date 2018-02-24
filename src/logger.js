@@ -1,17 +1,21 @@
+//@flow
 class Logger {
-    constructor(debug) {
-      this.debug = debug;
+  debug: boolean;
+  buffer: Array<Object>
+    constructor(env: string) {
+      this.debug = env === 'dev' ? true : false;
       this.buffer = [];
     }
 
-    log(m) {
+    log(m: Object | String) {
       var logObj;
       var ts = new Date();
       if (typeof m === "string") {
         logObj = { timestamp: ts, msg: m };
       } else {
-        m.timestamp = ts;
-        logObj = m;
+        const o: { timestamp: string } = (m : Object);
+        o.timestamp = ts.toString();
+        logObj = o;
       }
 
       this.buffer.push(logObj)

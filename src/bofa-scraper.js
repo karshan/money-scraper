@@ -175,7 +175,7 @@ async function scrape(creds) {
    * cookies and browser cache will not be saved.
    */
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
