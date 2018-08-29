@@ -24,7 +24,7 @@ app.use(bodyParser.json());
 
 app.post('/chase', async (req, res) => {
   chaseScraper
-  .scrape(req.body)
+  .scrape(req.body.creds)
   .then(postToWebhook(req.body.webhookURL))
   .then(res => res.json())
   .catch(err => console.log(err))
@@ -33,11 +33,11 @@ app.post('/chase', async (req, res) => {
 
 app.post('/bofa', async (req, res) => {
   bofaScraper
-  .scrape(req.body)
+  .scrape(req.body.creds)
   .then(postToWebhook(req.body.webhookURL))
   .then(res => res.json())
   .catch(err => console.log(err))
   res.send(`It's happening BofA`);
 });
 
-app.listen(8003, () => console.log(`money-scraper listening on ${SOCKET}`))
+app.listen(8003, '127.0.0.1');

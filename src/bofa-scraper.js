@@ -77,7 +77,9 @@ async function performDownloads(page, logger) {
   logger.log("numAccounts: " + numAccounts);
 
   var nameBalance = []
-  for (var i = 0; i < numAccounts; i++) {
+  // FIXME numAccounts-1 is hack specific to me. We should check the accounttype
+  // before scraping
+  for (var i = 0; i < numAccounts - 1; i++) {
     const accountName = await page.evaluate((sel, _i) => {
       return document.querySelectorAll(sel)[_i].innerText;
     }, ACCOUNTS_SEL, i);
@@ -175,7 +177,7 @@ async function scrape(creds) {
    * cookies and browser cache will not be saved.
    */
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "chrome-profile"
   });
   const page = await browser.newPage();
