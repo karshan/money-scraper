@@ -65,6 +65,7 @@ async function performRequests(page, logger) {
       res.on('data', (chunk) => { response = response + chunk });
       res.on('end', () => resolve(response));
     });
+    req.on('error', (e) => reject(e))
     req.write(body);
   });
   logger.log({accountTilesRaw: accountTilesRaw});
@@ -95,6 +96,7 @@ async function performRequests(page, logger) {
         res.on('data', (chunk) => { response = response + chunk });
         res.on('end', () => resolve(response));
       });
+      req.on('error', (e) => reject(e))
       req.write(body);
     });
     logger.log(`/card/list[${i}] END`);
