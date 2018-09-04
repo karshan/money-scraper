@@ -103,7 +103,9 @@ async function performDownloads(page, logger) {
   }
 
   var downloadedData = []
-  for (var i = 0; i < numAccounts; i++) {
+  // FIXME numAccounts-1 is hack specific to me. We should check the accounttype
+  // before scraping
+  for (var i = 0; i < numAccounts - 1; i++) {
     await page.waitForSelector(ACCOUNTS_SEL);
 
     await page.evaluate((sel, _i) => {
@@ -204,15 +206,17 @@ async function scrape(creds) {
       log: logger.getLog()
     };
   } catch(e) {
-    var screenshot;
+    var screenshot, domscreenshot;
     try {
       screenshot = (await page.screenshot()).toString('base64');
+      domscreenshot = await page.evaluate(() => document.querySelector("body").innerHTML);
     } catch(e) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
         exception: (e.toString() === "[object Object]") ? JSON.stringify(e) : e.toString(),
-        screenshot: screenshot
+        screenshot: screenshot,
+        domscreenshot: domscreenshot
       });
 
       return { ok: false, error: 'see log', log: logger.getLog() };

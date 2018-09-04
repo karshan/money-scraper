@@ -45,7 +45,7 @@ async function performRequests(page, logger) {
 
   logger.log("/tiles/list START");
   const accountTilesRaw = await new Promise(function(resolve, reject) {
-    const body = "ignorelkasd=1";
+    const body = "ignorejksd=1"; // This is required. (probably just a non empty body is required
     var response = "";
     const req = https.request({
       hostname: 'secure05c.chase.com',
@@ -143,15 +143,17 @@ async function scrape(creds) {
       log: logger.getLog()
     };
   } catch(e) {
-    var screenshot;
+    var screenshot, domscreenshot;
     try {
       screenshot = (await page.screenshot()).toString('base64');
+      domscreenshot = await page.evaluate(() => document.querySelector("body").innerHTML);
     } catch(e) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
         exception: (e.toString() === "[object Object]") ? JSON.stringify(e) : e.toString(),
-        screenshot: screenshot
+        screenshot: screenshot,
+        domscreenshot: domscreenshot
       });
 
       return { ok: false, error: 'see log', log: logger.getLog() };
