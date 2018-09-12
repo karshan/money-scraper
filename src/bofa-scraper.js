@@ -1,3 +1,4 @@
+// @flow
 const https = require('https');
 const Logger = require('./logger');
 const puppeteer = require('puppeteer');
@@ -5,7 +6,6 @@ const util = require('./util');
 const url = require('url');
 const vision = require('@google-cloud/vision');
 const visionClient = new vision.ImageAnnotatorClient();
-
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
@@ -79,7 +79,7 @@ async function login(page, creds, logger) {
   } else if (pageAfterLogin === "CAPTCHA") {
     await captchaLoadPromise;
 
-    var captchaElement;
+    var captchaElement, captchaPngB64;
     var ocrResult, ocrResultText;
     var done = false;
     var attemptsLeft = 5;
@@ -156,6 +156,7 @@ async function performDownloads(page, logger) {
     nameBalance.push({
       name: accountName,
       balance: accountBalance,
+      // $FlowFixMe
       accountId: url.parse(accountHref, true).query.adx
     });
   }
@@ -184,7 +185,7 @@ async function performDownloads(page, logger) {
     ])
 
     if (accountType === 'DEBIT') {
-      await page.evaluate(() => {
+      await page.evaluate(`
         document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
         /* Download transactions for specific dates: {
         document.querySelector('#cust-date').click();
@@ -192,15 +193,13 @@ async function performDownloads(page, logger) {
         document.querySelector('#end-date').value = '02/06/2018';
         } */
         document.querySelector('#select_filetype').value = "csv";
-        document.querySelector('.submit-download').click();
-      });
+        document.querySelector('.submit-download').click();`);
     } else if (accountType === 'CREDIT') {
-      await page.evaluate(() => {
+      await page.evaluate(`
         document.querySelector('[name=download_transactions_top]').click();
         // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
         document.querySelector('#select_filetype').value = "&formatType=csv";
-        document.querySelector('.submit-download').click();
-      });
+        document.querySelector('.submit-download').click();`);
     }
     const csvFilename = await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
     const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
@@ -221,7 +220,7 @@ async function performDownloads(page, logger) {
   return downloadedData;
 }
 
-async function scrape(creds) {
+async function scrape(creds: { username: string, password: string, secretQuestionAnswers: Object }) {
   var logger = new Logger(false);
 
   if (typeof creds.username !== "string" ||
@@ -267,7 +266,7 @@ async function scrape(creds) {
     var screenshot, domscreenshot;
     try {
       screenshot = (await page.screenshot()).toString('base64');
-      domscreenshot = await page.evaluate(() => document.querySelector("body").innerHTML);
+      domscreenshot = await page.evaluate(`document.querySelector("body").innerHTML`);
     } catch(e) {
     } finally {
       logger.log({

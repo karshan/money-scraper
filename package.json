@@ -3,18 +3,15 @@
   "version": "1.0.0",
   "main": "lib/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "ENV=dev nodemon ./lib/index.js",
-    "prod": "ENV=prod nodemon ./lib/index.js",
+    "prod": "GOOGLE_APPLICATION_CREDENTIALS=svc-acc-key.json node ./lib/index.js",
     "build": "babel src/ -d lib/",
-    "clean": "rm -rf lib"
+    "clean": "rm -rf lib",
+    "flow": "flow status"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@google-cloud/vision": "^0.22.0",
-    "babel-cli": "^6.26.0",
-    "babel-preset-flow": "^6.23.0",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",
     "node-fetch": "^2.0.0",
@@ -28,5 +25,10 @@
     "url": "https://github.com/karshan/money-scraper/issues"
   },
   "homepage": "https://github.com/karshan/money-scraper#readme",
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-flow": "^6.23.0",
+    "flow-bin": "^0.80.0"
+  }
 }

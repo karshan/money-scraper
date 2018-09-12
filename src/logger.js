@@ -2,12 +2,12 @@
 class Logger {
   debug: boolean;
   buffer: Array<Object>
-    constructor(env: string) {
-      this.debug = env === 'dev' ? true : false;
+    constructor(logToConsole: boolean) {
+      this.debug = logToConsole;
       this.buffer = [];
     }
 
-    log(m: Object | String) {
+    log(m: Object | string) {
       var logObj;
       var ts = new Date();
       if (typeof m === "string") {
