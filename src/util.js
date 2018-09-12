@@ -5,19 +5,23 @@ const fs = require('fs');
 function responseLogger(logger) {
   return async function(response) {
     var request = response.request();
-    var responseBody = await response.text();
-    if (!/\/raw\/$/.test(request.url()) && !/dynaTraceMonitor/.test(request.url())) {
-        logger.log({
-          url: request.url(),
-          method: request.method(),
-          responseLength: responseBody.length,
-          response: responseBody.substring(0, 1000)
-        });
-        /*if (request.postData()) {
-          console.log("request-length: " + request.postData().length);
-          console.log("postData: " + request.postData().substring(0, 1000));
-        }*/
+    var responseBody = await response.buffer();
+    var postData = null;
+    if (request.postData()) {
+      postData = {
+        len: request.postData().length,
+        data: request.postData().substring(0, 1000)
+      };
     }
+
+    logger.log({
+      url: request.url(),
+      method: request.method(),
+      responseLength: responseBody.length,
+      response: responseBody.toString('ascii').substring(0, 1000),
+      responseHeaders: response.headers(),
+      postData: postData,
+    });
   }
 }
 

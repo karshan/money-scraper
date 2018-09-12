@@ -3,6 +3,9 @@ const Logger = require('./logger');
 const puppeteer = require('puppeteer');
 const util = require('./util');
 const url = require('url');
+const vision = require('@google-cloud/vision');
+const visionClient = new vision.ImageAnnotatorClient();
+
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
@@ -18,6 +21,12 @@ const CHALLENGE_QUESTION_SEL = "[for=tlpvt-challenge-answer]"; // "#VerifyCompFo
 const CHALLENGE_ANSWER_SEL = "#tlpvt-challenge-answer";
 const REMEMBER_SEL = "#yes-recognize"; // yes remember this computer
 const CONTINUE_BUTTON_SEL = "#verify-cq-submit";
+
+// captcha page
+const CAPTCHA_IMG_SEL = 'img[src="/login/icaptcha"]#imageText';
+const CAPTCHA_TEXT_SEL = '#captchaKey';
+const CAPTCHA_CONTINUE_SEL = '#continue';
+const CAPTCHA_REFRESH_SEL = 'a[name="text-img-refresh"]';
 
 // login landing page (first page after login)
 const ACCOUNTS_SEL = ".AccountItem > .AccountName > a";
@@ -39,30 +48,77 @@ async function login(page, creds, logger) {
   await util.waitAndClick(page, PASSWORD_SEL, logger);
   await page.keyboard.type(creds.password);
 
+  const captchaLoadPromise = util.waitForUrlRegex(page, /login\/icaptcha/, logger);
   await util.waitAndClick(page, SIGN_IN_BUTTON_SEL, logger);
 
   await page.waitForNavigation();
 
-  const challenged = await Promise.race([
-    page.waitForSelector(ACCOUNTS_SEL).then((r) => false),
-    page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => true)
+  const pageAfterLogin = await Promise.race([
+    page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
+    page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => "CHALLENGE"),
+    page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA")
   ])
 
-  if (challenged === false) return;
+  if (pageAfterLogin === "ACCOUNTS") return;
 
-  const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
+  if (pageAfterLogin === "CHALLENGE") {
+    const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
 
-  const challengeKey = creds.secretQuestionAnswers.keys.filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
-  if (typeof challengeKey !== "string") throw `no answer for challenge ${challengeQuestion}`
+    const challengeKey = creds.secretQuestionAnswers.keys.filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
+    if (typeof challengeKey !== "string") throw `no answer for challenge ${challengeQuestion}`
 
-  const challengeAnswer = creds.secretQuestionAnswers[challengeKey];
+    const challengeAnswer = creds.secretQuestionAnswers[challengeKey];
 
-  if (typeof challengeAnswer !== "string") throw "couldn't find the answer";
+    if (typeof challengeAnswer !== "string") throw "couldn't find the answer";
 
-  await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
-  await page.keyboard.type(challengeAnswer);
-  await util.waitAndClick(page, REMEMBER_SEL, logger);
-  await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
+    await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
+    await page.keyboard.type(challengeAnswer);
+    await util.waitAndClick(page, REMEMBER_SEL, logger);
+    await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
+  } else if (pageAfterLogin === "CAPTCHA") {
+    await captchaLoadPromise;
+    const captchaElement = await page.$(CAPTCHA_IMG_SEL);
+
+    logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
+    await page.waitFor(10000);
+    logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
+
+    var ocrResult, ocrResultText;
+    var done = false;
+    var attemptsLeft = 5;
+    while (attemptsLeft > 0 && done == false) {
+      captchaPngB64 = (await captchaElement.screenshot()).toString('base64');
+      logger.log({ captcha: captchaPngB64 });
+      ocrResult = await visionClient.textDetection({ image: { content: captchaPngB64 } })
+      if (!ocrResult[0] || !ocrResult[0].fullTextAnnotation || !ocrResult[0].fullTextAnnotation.text) {
+          logger.log({ ocrResult: ocrResult });
+          throw "bad ocrResult";
+      }
+      ocrResultText = ocrResult[0].fullTextAnnotation.text.trim();
+      logger.log({ ocrResultText: ocrResultText });
+      if (!/Use this text/.test(ocrResultText) && ocrResultText.length == 6) {
+        done = true;
+        break;
+      }
+
+      await util.waitAndClick(page, CAPTCHA_REFRESH_SEL, logger);
+      await page.waitFor(8000);
+    }
+
+    if (done == false) {
+      throw 'captcha never loaded';
+    }
+
+    await util.waitAndClick(page, CAPTCHA_TEXT_SEL, logger);
+    await page.keyboard.type(ocrResultText);
+    await util.waitAndClick(page, CAPTCHA_CONTINUE_SEL, logger);
+    await page.waitForNavigation();
+
+    throw "capsha unimplemented"
+  } else {
+    // impossible ?
+    throw "pageAfterLogin != ACCOUNTS,CHALLENGE or CAPTCHA"
+  }
 }
 
 //                   |---repeat for each account---|
