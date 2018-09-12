@@ -275,7 +275,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
 // TODO annotate return type
 async function scrape(creds: Creds) {
-  var logger = new Logger(true);
+  var logger = new Logger(false);
 
   if (typeof creds.username !== "string" ||
       typeof creds.password !== "string" ||
