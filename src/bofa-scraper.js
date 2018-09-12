@@ -27,6 +27,7 @@ const CAPTCHA_IMG_SEL = 'img[src="/login/icaptcha"]#imageText';
 const CAPTCHA_TEXT_SEL = '#captchaKey';
 const CAPTCHA_CONTINUE_SEL = '#continue';
 const CAPTCHA_REFRESH_SEL = 'a[name="text-img-refresh"]';
+const CAPTCHA_REFRESH2_SEL = '#refresh';
 
 // login landing page (first page after login)
 const ACCOUNTS_SEL = ".AccountItem > .AccountName > a";
@@ -77,16 +78,17 @@ async function login(page, creds, logger) {
     await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
   } else if (pageAfterLogin === "CAPTCHA") {
     await captchaLoadPromise;
-    const captchaElement = await page.$(CAPTCHA_IMG_SEL);
 
-    logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
-    await page.waitFor(10000);
-    logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
-
+    var captchaElement;
     var ocrResult, ocrResultText;
     var done = false;
     var attemptsLeft = 5;
-    while (attemptsLeft > 0 && done == false) {
+    while (attemptsLeft-- > 0 && done == false) {
+      captchaElement = await page.$(CAPTCHA_IMG_SEL);
+      logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
+      await page.waitFor(10000);
+      logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
+
       captchaPngB64 = (await captchaElement.screenshot()).toString('base64');
       logger.log({ captcha: captchaPngB64 });
       ocrResult = await visionClient.textDetection({ image: { content: captchaPngB64 } })
@@ -102,7 +104,7 @@ async function login(page, creds, logger) {
       }
 
       await util.waitAndClick(page, CAPTCHA_REFRESH_SEL, logger);
-      await page.waitFor(8000);
+      await util.waitAndClick(page, CAPTCHA_REFRESH2_SEL, logger);
     }
 
     if (done == false) {
