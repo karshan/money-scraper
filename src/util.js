@@ -2,26 +2,41 @@ const fs = require('fs');
 
 // log network requests made by puppeteer
 // usage: page.on('response', responseLogger);
-function responseLogger(logger) {
+function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
   return async function(response) {
     var request = response.request();
-    var responseBody = await response.buffer();
-    var postData = null;
-    if (request.postData()) {
-      postData = {
-        len: request.postData().length,
-        data: request.postData().substring(0, 1000)
-      };
-    }
+    var responseBody, resp;
+    if (urlWhiteRegex.test(request.url()) && !urlBlackRegex.test(request.url())) {
 
-    logger.log({
-      url: request.url(),
-      method: request.method(),
-      responseLength: responseBody.length,
-      response: responseBody.toString('ascii').substring(0, 1000),
-      responseHeaders: response.headers(),
-      postData: postData,
-    });
+      try {
+        responseBody = await response.buffer();
+      } catch(e) {
+      }
+
+      var postData = null;
+
+      if (request.postData()) {
+        postData = {
+          len: request.postData().length,
+          data: request.postData().substring(0, 1000)
+        };
+      }
+
+      if (responseBody) {
+        resp = {
+          responseLength: responseBody.length,
+          response: responseBody.toString('ascii').substring(0, 1000),
+        }
+      }
+
+      logger.log({
+        url: request.url(),
+        method: request.method(),
+        resp,
+        responseHeaders: response.headers(),
+        postData
+      });
+    }
   }
 }
 

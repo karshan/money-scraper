@@ -6,6 +6,8 @@ const util = require('./util');
 const url = require('url');
 const vision = require('@google-cloud/vision');
 const visionClient = new vision.ImageAnnotatorClient();
+const speech = require('@google-cloud/speech');
+const speechClient = new speech.SpeechClient();
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
@@ -23,7 +25,7 @@ const REMEMBER_SEL = "#yes-recognize"; // yes remember this computer
 const CONTINUE_BUTTON_SEL = "#verify-cq-submit";
 
 // captcha page
-const CAPTCHA_IMG_SEL = 'img[src="/login/icaptcha"]#imageText';
+const CAPTCHA_IMG_SEL = '#imageText';
 const CAPTCHA_TEXT_SEL = '#captchaKey';
 const CAPTCHA_CONTINUE_SEL = '#continue';
 const CAPTCHA_REFRESH_SEL = 'a[name="text-img-refresh"]';
@@ -38,8 +40,15 @@ const BACK_TO_ACCOUNT_SEL = "[name=onh_accounts]";
 // LoginPage Url
 const LOGIN_PAGE_URL = 'https://bankofamerica.com';
 
-// _ -> LoginLandingPage
-async function login(page, creds, logger) {
+const LOG_RESPONSES = false;
+
+type StateTag = "INITIAL" | "DONE" | "ACCOUNTS" | "CHALLENGE" | "CAPTCHA"
+type State = { tag: StateTag, numAttempts: number }
+
+type Creds = { username: string, password: string, secretQuestionAnswers: Object }
+
+// AnyBrowserState -> ACCOUNTS | CHALLENGE | CAPTCHA
+async function login(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
   await page.goto(LOGIN_PAGE_URL);
 
   await util.waitAndClick(page, USERNAME_SEL, logger);
@@ -49,7 +58,11 @@ async function login(page, creds, logger) {
   await util.waitAndClick(page, PASSWORD_SEL, logger);
   await page.keyboard.type(creds.password);
 
-  const captchaLoadPromise = util.waitForUrlRegex(page, /login\/icaptcha/, logger);
+  if (LOG_RESPONSES) {
+    page.on('response', util.responseLogger(new RegExp("//secure\.bankofamerica\.com/.*$", "i"),
+      new RegExp("(\.gif|\.png|\.css|\.js|\.woff)$", "i"), logger));
+  }
+
   await util.waitAndClick(page, SIGN_IN_BUTTON_SEL, logger);
 
   await page.waitForNavigation();
@@ -57,78 +70,118 @@ async function login(page, creds, logger) {
   const pageAfterLogin = await Promise.race([
     page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
     page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => "CHALLENGE"),
-    page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA")
+    page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA"),
+    page.waitForSelector('#RequestAuthCodeForm').then((r) => { throw "2nd Factor required" })
   ])
 
-  if (pageAfterLogin === "ACCOUNTS") return;
+  return { state: { tag: pageAfterLogin, numAttempts: state.numAttempts }, output: null }
+}
 
-  if (pageAfterLogin === "CHALLENGE") {
-    const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
+async function performChallenge(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
+  const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
 
-    const challengeKey = creds.secretQuestionAnswers.keys.filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
-    if (typeof challengeKey !== "string") throw `no answer for challenge ${challengeQuestion}`
+  const challengeKey = Object.keys(creds.secretQuestionAnswers).filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
+  if (typeof challengeKey !== "string") throw `no answer for challenge ${challengeQuestion}`
 
-    const challengeAnswer = creds.secretQuestionAnswers[challengeKey];
+  const challengeAnswer = creds.secretQuestionAnswers[challengeKey];
 
-    if (typeof challengeAnswer !== "string") throw "couldn't find the answer";
+  if (typeof challengeAnswer !== "string") throw "couldn't find the answer";
 
-    await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
-    await page.keyboard.type(challengeAnswer);
-    await util.waitAndClick(page, REMEMBER_SEL, logger);
-    await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
-  } else if (pageAfterLogin === "CAPTCHA") {
-    await captchaLoadPromise;
+  await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
+  await page.keyboard.type(challengeAnswer);
+  await util.waitAndClick(page, REMEMBER_SEL, logger);
+  await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
 
-    var captchaElement, captchaPngB64;
-    var ocrResult, ocrResultText;
-    var done = false;
-    var attemptsLeft = 5;
-    while (attemptsLeft-- > 0 && done == false) {
-      captchaElement = await page.$(CAPTCHA_IMG_SEL);
-      logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
-      await page.waitFor(10000);
-      logger.log({ captchaWidth: await (await captchaElement.getProperty('width')).jsonValue() });
+  await page.waitForSelector(ACCOUNTS_SEL);
 
-      captchaPngB64 = (await captchaElement.screenshot()).toString('base64');
-      logger.log({ captcha: captchaPngB64 });
-      ocrResult = await visionClient.textDetection({ image: { content: captchaPngB64 } })
-      if (!ocrResult[0] || !ocrResult[0].fullTextAnnotation || !ocrResult[0].fullTextAnnotation.text) {
-          logger.log({ ocrResult: ocrResult });
-          throw "bad ocrResult";
+  return { state: { tag: "ACCOUNTS", numAttempts: state.numAttempts }, output: null };
+}
+
+async function performCaptcha(state: State, page, logger : Logger): Promise<{ state: State, output: any }> {
+  async function audioCaptchaUNUSED() {
+    const audioCaptchaP = page.waitForResponse(response => new RegExp("login/audioCaptcha", "i").test(response.url()))
+    await util.waitAndClick(page, 'a[name="audio"]', logger);
+    const audioCaptcha = (await (await audioCaptchaP).buffer()).toString('base64');
+    const speechResp = await speechClient.recognize({
+      audio: {
+        content: audioCaptcha
+      },
+      config: {
+        encoding: 'LINEAR16',
+        languageCode: 'en-US',
       }
-      ocrResultText = ocrResult[0].fullTextAnnotation.text.trim();
-      logger.log({ ocrResultText: ocrResultText });
-      if (!/Use this text/.test(ocrResultText) && ocrResultText.length == 6) {
-        done = true;
-        break;
-      }
-
-      await util.waitAndClick(page, CAPTCHA_REFRESH_SEL, logger);
-      await util.waitAndClick(page, CAPTCHA_REFRESH2_SEL, logger);
-    }
-
-    if (done == false) {
-      throw 'captcha never loaded';
-    }
-
-    await util.waitAndClick(page, CAPTCHA_TEXT_SEL, logger);
-    await page.keyboard.type(ocrResultText);
-    await util.waitAndClick(page, CAPTCHA_CONTINUE_SEL, logger);
-    await page.waitForNavigation();
-
-    throw "capsha unimplemented"
-  } else {
-    // impossible ?
-    throw "pageAfterLogin != ACCOUNTS,CHALLENGE or CAPTCHA"
+    });
+    logger.log(speechResp);
+    throw "audio captcha unimplemented";
   }
+
+  var captcha;
+  var ocrResponse, ocrText;
+  var done = false;
+  var attemptsLeft = 5;
+
+  if (state.numAttempts >= 5) {
+    throw "Failed after 5 attempts";
+  }
+
+  while (attemptsLeft-- > 0 && done == false) {
+    logger.log('waitForSelector CAPTCHA_IMG_SEL BEGIN');
+    await page.waitForSelector(CAPTCHA_IMG_SEL);
+    logger.log('waitFor .complete BEGIN');
+    await page.waitFor((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
+    const natWidth = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
+    logger.log({ natWidth });
+
+    if (natWidth === 0) { // Img loaded with error
+      logger.log("Captcha did not load...");
+      page.waitFor(2000);
+      return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
+    }
+
+    captcha = (await (await page.$(CAPTCHA_IMG_SEL)).screenshot()).toString('base64');
+    logger.log({ captcha });
+    ocrResponse = await visionClient.textDetection({ image: { content: captcha } })
+    if (!ocrResponse[0] || !ocrResponse[0].fullTextAnnotation || !ocrResponse[0].fullTextAnnotation.text) {
+      logger.log({ ocrResponse, error: "bad ocrResponse" });
+      await page.waitFor(2000);
+      await util.waitAndClick(page, CAPTCHA_REFRESH_SEL, logger);
+      await page.waitFor(2000);
+      await util.waitAndClick(page, CAPTCHA_REFRESH2_SEL, logger);
+      await page.waitFor(10000);
+      continue;
+    }
+
+    ocrText = ocrResponse[0].fullTextAnnotation.text.trim();
+    logger.log({ ocrText });
+    if (ocrText.length == 6) {
+      done = true;
+      break;
+    }
+  }
+
+  if (done == false) {
+    throw 'captcha never loaded';
+  }
+
+  await util.waitAndClick(page, CAPTCHA_TEXT_SEL, logger);
+  await page.keyboard.type(ocrText);
+  await util.waitAndClick(page, CAPTCHA_CONTINUE_SEL, logger);
+  await page.waitForNavigation();
+
+  const nextPage = await Promise.race([
+    page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
+    page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => "CHALLENGE"),
+    page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA"),
+    page.waitForSelector('#RequestAuthCodeForm').then((r) => { throw "2nd Factor required" })
+  ]);
+
+  return { state: { tag: nextPage, numAttempts: state.numAttempts + (nextPage == "CAPTCHA" ? 1 : 0) }, output: null };
 }
 
 //                   |---repeat for each account---|
 //                   v                             ^
-// LoginLandingPage -> AccountPage -> Download CSV -> LoginLandingPage
-async function performDownloads(page, logger) {
-  await page.waitForSelector(ACCOUNTS_SEL);
-
+// ACCOUNTS -> AccountPage -> Download CSV -> LoginLandingPage
+async function performDownloads(state, page, logger): Promise<{ state: State, output: any }> {
   const numAccounts = await page.evaluate((sel) => {
     return document.querySelectorAll(sel).length;
   }, ACCOUNTS_SEL);
@@ -217,11 +270,12 @@ async function performDownloads(page, logger) {
     util.waitAndClick(page, BACK_TO_ACCOUNT_SEL, logger); // no need to await here since waitForNavigation
     await navigationPromise;
   }
-  return downloadedData;
+  return { state: { tag: "DONE", numAttempts: state.numAttempts }, output: downloadedData }
 }
 
-async function scrape(creds: { username: string, password: string, secretQuestionAnswers: Object }) {
-  var logger = new Logger(false);
+// TODO annotate return type
+async function scrape(creds: Creds) {
+  var logger = new Logger(true);
 
   if (typeof creds.username !== "string" ||
       typeof creds.password !== "string" ||
@@ -253,13 +307,29 @@ async function scrape(creds: { username: string, password: string, secretQuestio
 
   await page.setViewport({ width: 1920, height: 1080 });
 
+  var state: State = { tag: "INITIAL", numAttempts: 0 };
+  var output, tmp;
   try {
-    await login(page, creds, logger);
-    const downloadedData = await performDownloads(page, logger);
-
+    while (state.tag != "DONE") {
+      logger.log({ state });
+      switch(state.tag) {
+        case "INITIAL":
+          ({ state, output } = await login(state, page, creds, logger));
+          break;
+        case "ACCOUNTS":
+          ({ state, output } = await performDownloads(state, page, logger));
+          break;
+        case "CHALLENGE":
+          ({ state, output } = await performChallenge(state, page, creds, logger));
+          break;
+        case "CAPTCHA":
+          ({ state, output } = await performCaptcha(state, page, logger));
+          break;
+      }
+    }
     return {
       ok: true,
-      downloadedData: downloadedData,
+      downloadedData: output,
       log: logger.getLog()
     };
   } catch(e) {

@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/speech": "^2.1.0",
     "@google-cloud/vision": "^0.22.0",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",

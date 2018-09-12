@@ -24,7 +24,7 @@ class Logger {
         if (typeof m === "string") {
           console.log(m);
         } else {
-          console.log(JSON.stringify(m, null, 2));
+          console.log(JSON.stringify(m, null, 2).substring(0, 2000));
         }
       }
     }
