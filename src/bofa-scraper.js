@@ -6,8 +6,6 @@ const util = require('./util');
 const url = require('url');
 const vision = require('@google-cloud/vision');
 const visionClient = new vision.ImageAnnotatorClient();
-const speech = require('@google-cloud/speech');
-const speechClient = new speech.SpeechClient();
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
