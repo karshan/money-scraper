@@ -87,7 +87,6 @@ async function performChallenge(state: State, page, creds, logger : Logger): Pro
 
   await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
   await page.keyboard.type(challengeAnswer);
-  await util.waitAndClick(page, REMEMBER_SEL, logger);
   await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
 
   await page.waitForSelector(ACCOUNTS_SEL);
@@ -109,15 +108,17 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
 
   if (natWidth === 0) { // Img loaded with error
     logger.log("Captcha did not load...");
-    page.waitFor(1000);
+    await page.waitFor(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
+  // The captcha image is completely white sometimes, maybe some other loading goes on, wait 1 second ?
+  await page.waitFor(1000);
   captcha = (await (await page.$(CAPTCHA_IMG_SEL)).screenshot()).toString('base64');
   logger.log({ captcha });
   ocrResponse = await visionClient.textDetection({ image: { content: captcha } })
   if (!ocrResponse[0] || !ocrResponse[0].fullTextAnnotation || !ocrResponse[0].fullTextAnnotation.text) {
-    logger.log({ ocrResponse, error: "bad ocrResponse" });
+    logger.log({ ocrResponse, error: "OCR didn't detect any fullText" });
     page.waitFor(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
@@ -126,15 +127,16 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
   logger.log({ ocrText });
 
   if (ocrText.length != 6) {
-    logger.log({ ocrText, error: "ocrText.length != 6" });
+    logger.log({ ocrText, ocrResponse, error: "ocrText.length != 6" });
     page.waitFor(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
   await util.waitAndClick(page, CAPTCHA_TEXT_SEL, logger);
   await page.keyboard.type(ocrText);
+  const navP = page.waitForNavigation();
   await util.waitAndClick(page, CAPTCHA_CONTINUE_SEL, logger);
-  await page.waitForNavigation();
+  await navP;
 
   const nextPage = await Promise.race([
     page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
@@ -143,7 +145,13 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
     page.waitForSelector('#RequestAuthCodeForm').then((r) => { throw "2nd Factor required" })
   ]);
 
-  return { state: { tag: nextPage, numAttempts: state.numAttempts + (nextPage == "CAPTCHA" ? 1 : 0) }, output: null };
+  var numAttempts = state.numAttempts;
+  if (nextPage == "CAPTCHA") {
+    logger.log({ ocrResponse, error: "Captch was solved incorrectly" });
+    numAttempts++;
+  }
+
+  return { state: { tag: nextPage, numAttempts: numAttempts }, output: null };
 }
 
 //                   |---repeat for each account---|
@@ -203,6 +211,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
     await page.waitForNavigation();
 
+    const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
     if (accountType === 'DEBIT') {
       await page.evaluate(`
         document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
@@ -220,7 +229,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
         document.querySelector('#select_filetype').value = "&formatType=csv";
         document.querySelector('.submit-download').click();`);
     }
-    const csvFilename = await util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
+    const csvFilename = await fileCreationP;
     const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
     await util.unlink(DOWNLOAD_DIR + csvFilename);
 

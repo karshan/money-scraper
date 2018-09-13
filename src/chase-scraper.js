@@ -38,6 +38,11 @@ async function login(page, creds, logger) {
   await util.frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
 
   await util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
+
+  // TODO check if we logged in successfully
+  // if 2nd factor page is shown, this can be detected by checking for the existence of
+  // button#requestDeliveryDevices
+  // also h3 with innerText = "We don't recognize the computer you're using."
 }
 
 async function performRequests(page, logger) {
@@ -70,7 +75,15 @@ async function performRequests(page, logger) {
   });
   logger.log({accountTilesRaw: accountTilesRaw});
 
-  const accountTiles = JSON.parse(accountTilesRaw).accountTiles;
+  var accountTiles
+  try {
+    accountTiles = JSON.parse(accountTilesRaw).accountTiles;
+  } catch(e) {
+    logger.log(`failed to parse accountTiles JSON: ${e}`);
+    iframescreenshot = await page.evaluate(() => window.frames[0].document.body.innerHTML);
+    logger.log({ iframescreenshot });
+    throw "Probably Chase \"2nd factor\" required";
+  }
 
   for (var i = 0; i < accountTiles.length; i++) {
     logger.log(`/card/list[${i}] START`);
