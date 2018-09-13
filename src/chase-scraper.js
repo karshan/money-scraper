@@ -45,7 +45,7 @@ async function performRequests(page, logger) {
 
   logger.log("/tiles/list START");
   const accountTilesRaw = await new Promise(function(resolve, reject) {
-    const body = "ignorejksd=1"; // This is required. (probably just a non empty body is required
+    const body = "cache=1"; // This is required. (probably just a non empty body is required
     var response = "";
     const req = https.request({
       hostname: 'secure05c.chase.com',
@@ -65,7 +65,7 @@ async function performRequests(page, logger) {
       res.on('data', (chunk) => { response = response + chunk });
       res.on('end', () => resolve(response));
     });
-    req.on('error', (e) => reject(e))
+    req.on('error', (e) => reject("/tiles/list failed with: " + e.toString()))
     req.write(body);
   });
   logger.log({accountTilesRaw: accountTilesRaw});
@@ -96,7 +96,7 @@ async function performRequests(page, logger) {
         res.on('data', (chunk) => { response = response + chunk });
         res.on('end', () => resolve(response));
       });
-      req.on('error', (e) => reject(e))
+      req.on('error', (e) => reject(`/card/list[${i}] failed with: ` + e.toString()))
       req.write(body);
     });
     logger.log(`/card/list[${i}] END`);

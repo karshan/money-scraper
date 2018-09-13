@@ -98,69 +98,39 @@ async function performChallenge(state: State, page, creds, logger : Logger): Pro
 }
 
 async function performCaptcha(state: State, page, logger : Logger): Promise<{ state: State, output: any }> {
-  async function audioCaptchaUNUSED() {
-    const audioCaptchaP = page.waitForResponse(response => new RegExp("login/audioCaptcha", "i").test(response.url()))
-    await util.waitAndClick(page, 'a[name="audio"]', logger);
-    const audioCaptcha = (await (await audioCaptchaP).buffer()).toString('base64');
-    const speechResp = await speechClient.recognize({
-      audio: {
-        content: audioCaptcha
-      },
-      config: {
-        encoding: 'LINEAR16',
-        languageCode: 'en-US',
-      }
-    });
-    logger.log(speechResp);
-    throw "audio captcha unimplemented";
-  }
-
-  var captcha;
-  var ocrResponse, ocrText;
-  var done = false;
-  var attemptsLeft = 5;
-
   if (state.numAttempts >= 5) {
     throw "Failed after 5 attempts";
   }
 
-  while (attemptsLeft-- > 0 && done == false) {
-    logger.log('waitForSelector CAPTCHA_IMG_SEL BEGIN');
-    await page.waitForSelector(CAPTCHA_IMG_SEL);
-    logger.log('waitFor .complete BEGIN');
-    await page.waitFor((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
-    const natWidth = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
-    logger.log({ natWidth });
+  var captcha: string, ocrResponse: Object, ocrText: string;
 
-    if (natWidth === 0) { // Img loaded with error
-      logger.log("Captcha did not load...");
-      page.waitFor(2000);
-      return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
-    }
+  await page.waitForSelector(CAPTCHA_IMG_SEL);
+  await page.waitFor((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
+  const natWidth = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
+  logger.log({ natWidth });
 
-    captcha = (await (await page.$(CAPTCHA_IMG_SEL)).screenshot()).toString('base64');
-    logger.log({ captcha });
-    ocrResponse = await visionClient.textDetection({ image: { content: captcha } })
-    if (!ocrResponse[0] || !ocrResponse[0].fullTextAnnotation || !ocrResponse[0].fullTextAnnotation.text) {
-      logger.log({ ocrResponse, error: "bad ocrResponse" });
-      await page.waitFor(2000);
-      await util.waitAndClick(page, CAPTCHA_REFRESH_SEL, logger);
-      await page.waitFor(2000);
-      await util.waitAndClick(page, CAPTCHA_REFRESH2_SEL, logger);
-      await page.waitFor(10000);
-      continue;
-    }
-
-    ocrText = ocrResponse[0].fullTextAnnotation.text.trim();
-    logger.log({ ocrText });
-    if (ocrText.length == 6) {
-      done = true;
-      break;
-    }
+  if (natWidth === 0) { // Img loaded with error
+    logger.log("Captcha did not load...");
+    page.waitFor(1000);
+    return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
-  if (done == false) {
-    throw 'captcha never loaded';
+  captcha = (await (await page.$(CAPTCHA_IMG_SEL)).screenshot()).toString('base64');
+  logger.log({ captcha });
+  ocrResponse = await visionClient.textDetection({ image: { content: captcha } })
+  if (!ocrResponse[0] || !ocrResponse[0].fullTextAnnotation || !ocrResponse[0].fullTextAnnotation.text) {
+    logger.log({ ocrResponse, error: "bad ocrResponse" });
+    page.waitFor(1000);
+    return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
+  }
+
+  ocrText = ocrResponse[0].fullTextAnnotation.text.trim();
+  logger.log({ ocrText });
+
+  if (ocrText.length != 6) {
+    logger.log({ ocrText, error: "ocrText.length != 6" });
+    page.waitFor(1000);
+    return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
   await util.waitAndClick(page, CAPTCHA_TEXT_SEL, logger);
