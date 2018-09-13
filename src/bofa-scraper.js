@@ -156,16 +156,11 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
   logger.log("numAccounts: " + numAccounts);
 
   var nameBalance = []
-  // FIXME numAccounts-1 is hack specific to me. We should check the accounttype
-  // before scraping
-  for (var i = 0; i < numAccounts - 1; i++) {
+  for (var i = 0; i < numAccounts; i++) {
     const accountName = await page.evaluate((sel, _i) => {
       return document.querySelectorAll(sel)[_i].innerText;
     }, ACCOUNTS_SEL, i);
 
-    // FIXME: This balance includes pending transactions that are not returned
-    // by this scraper. For debit this can be fixed by not returning a balance
-    // since the correct balance is included in the CSV. for credit ¯\_(ツ)_/¯
     const accountBalance = await page.evaluate((sel, _i) => {
       return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
     }, ACCOUNTS_SEL, i);
@@ -183,10 +178,23 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
   }
 
   var downloadedData = []
-  // FIXME numAccounts-1 is hack specific to me. We should check the accounttype
-  // before scraping
-  for (var i = 0; i < numAccounts - 1; i++) {
+  for (var i = 0; i < numAccounts; i++) {
     await page.waitForSelector(ACCOUNTS_SEL);
+
+    const accountType = await page.evaluate((sel, _i) => {
+      var classList = document.querySelectorAll(sel)[_i].parentNode.parentNode.classList;
+      if (classList.contains('AccountItemDeposit')) return "DEBIT";
+      if (classList.contains('AccountItemCreditCard')) return "CREDIT";
+      return null;
+    }, ACCOUNTS_SEL, i);
+
+    if (accountType == null) {
+      const accountClassList = await page.evaluate((sel, _i) => {
+        return document.querySelectorAll(sel)[_i].parentNode.parentNode.classList;
+      }, ACCOUNTS_SEL, i);
+      logger.log(`Account ${i} not CREDIT/DEBIT: ${JSON.stringify(accountClassList)}`);
+      continue;
+    }
 
     await page.evaluate((sel, _i) => {
       document.querySelectorAll(sel)[_i].click();
@@ -194,16 +202,6 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
     logger.log(`going to account ${i}`);
 
     await page.waitForNavigation();
-
-    /*
-     * another way to figure out if debit or credit account:
-     * > document.querySelectorAll(ACCOUNTS_SEL)[0].parentNode.parentNode.classList
-     * > DOMTokenList(2) ["AccountItem", "AccountItemDeposit", value: "AccountItem AccountItemDeposit"]
-     */
-    const accountType = await Promise.race([
-      page.waitForSelector('#depositDownLink > a').then((r) => 'DEBIT'),
-      page.waitForSelector('#makePaymentWidget').then((r) => 'CREDIT')
-    ])
 
     if (accountType === 'DEBIT') {
       await page.evaluate(`
