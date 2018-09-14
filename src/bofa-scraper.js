@@ -213,6 +213,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
     const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
     if (accountType === 'DEBIT') {
+      await page.waitForSelector('#depositDownLink > a');
       await page.evaluate(`
         document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
         /* Download transactions for specific dates: {
@@ -223,6 +224,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
         document.querySelector('#select_filetype').value = "csv";
         document.querySelector('.submit-download').click();`);
     } else if (accountType === 'CREDIT') {
+      await page.waitForSelector('[name=download_transactions_top]');
       await page.evaluate(`
         document.querySelector('[name=download_transactions_top]').click();
         // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
