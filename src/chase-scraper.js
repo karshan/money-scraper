@@ -70,7 +70,7 @@ async function performRequests(page, logger) {
       res.on('data', (chunk) => { response = response + chunk });
       res.on('end', () => resolve(response));
     });
-    req.on('error', (e) => reject("/tiles/list failed with: " + e.toString()))
+    req.on('error', (e) => reject("/tiles/list failed with: " + JSON.stringify(e)))
     req.write(body);
   });
   logger.log({accountTilesRaw: accountTilesRaw});

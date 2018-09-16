@@ -136,12 +136,11 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
   await page.keyboard.type(ocrText);
   const navP = page.waitForNavigation();
   await util.waitAndClick(page, CAPTCHA_CONTINUE_SEL, logger);
-  await navP;
 
   const nextPage = await Promise.race([
     page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
     page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => "CHALLENGE"),
-    page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA"),
+    navP.then(page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA")),
     page.waitForSelector('#RequestAuthCodeForm').then((r) => { throw "2nd Factor required" })
   ]);
 
@@ -231,17 +230,24 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
         document.querySelector('#select_filetype').value = "&formatType=csv";
         document.querySelector('.submit-download').click();`);
     }
-    const csvFilename = await fileCreationP;
-    const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
-    await util.unlink(DOWNLOAD_DIR + csvFilename);
+    var csvFilename = null;
+    try {
+      csvFilename = await fileCreationP;
+    } catch(e) {
+      logger.log(e);
+    }
+    if (csvFilename) {
+      const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
+      await util.unlink(DOWNLOAD_DIR + csvFilename);
 
-    downloadedData.push({
-      name: nameBalance[i].name,
-      balance: nameBalance[i].balance,
-      accountId: nameBalance[i].accountId,
-      csv: csvContents,
-      _type: accountType
-    });
+      downloadedData.push({
+        name: nameBalance[i].name,
+        balance: nameBalance[i].balance,
+        accountId: nameBalance[i].accountId,
+        csv: csvContents,
+        _type: accountType
+      });
+    }
 
     const navigationPromise = page.waitForNavigation();
     util.waitAndClick(page, BACK_TO_ACCOUNT_SEL, logger); // no need to await here since waitForNavigation
