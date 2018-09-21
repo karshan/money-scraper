@@ -87,6 +87,10 @@ async function performChallenge(state: State, page, creds, logger : Logger): Pro
 
   await util.waitAndClick(page, CHALLENGE_ANSWER_SEL, logger);
   await page.keyboard.type(challengeAnswer);
+  await page.evaluate((sel) => {
+    var n = document.querySelector(sel);
+    if (n) { n.click(); }
+  }, REMEMBER_SEL);
   await util.waitAndClick(page, CONTINUE_BUTTON_SEL, logger);
 
   await page.waitForSelector(ACCOUNTS_SEL);
@@ -140,7 +144,7 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
   const nextPage = await Promise.race([
     page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
     page.waitForSelector(CHALLENGE_QUESTION_SEL).then((r) => "CHALLENGE"),
-    navP.then(page.waitForSelector(CAPTCHA_IMG_SEL).then((r) => "CAPTCHA")),
+    navP.then((r) => page.waitForSelector(CAPTCHA_IMG_SEL)).then((r) => "CAPTCHA"),
     page.waitForSelector('#RequestAuthCodeForm').then((r) => { throw "2nd Factor required" })
   ]);
 
@@ -203,51 +207,61 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       continue;
     }
 
+    const navP = page.waitForNavigation();
     await page.evaluate((sel, _i) => {
       document.querySelectorAll(sel)[_i].click();
     }, ACCOUNTS_SEL, i);
     logger.log(`going to account ${i}`);
 
-    await page.waitForNavigation();
+    await navP;
 
-    const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
-    if (accountType === 'DEBIT') {
-      await page.waitForSelector('#depositDownLink > a');
-      await page.evaluate(`
-        document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
-        /* Download transactions for specific dates: {
-        document.querySelector('#cust-date').click();
-        document.querySelector('#start-date').value = '03/01/2014';
-        document.querySelector('#end-date').value = '02/06/2018';
-        } */
-        document.querySelector('#select_filetype').value = "csv";
-        document.querySelector('.submit-download').click();`);
-    } else if (accountType === 'CREDIT') {
-      await page.waitForSelector('[name=download_transactions_top]');
-      await page.evaluate(`
-        document.querySelector('[name=download_transactions_top]').click();
-        // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
-        document.querySelector('#select_filetype').value = "&formatType=csv";
-        document.querySelector('.submit-download').click();`);
+    var csvs = [];
+    for (var statements_i = 1; statements_i <= 2; statements_i++) {
+      logger.log(`downloading statement ${statements_i}`);
+      const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
+      if (accountType === 'DEBIT') {
+        await page.waitForSelector('#depositDownLink > a');
+        await page.evaluate(`
+          document.querySelector('#depositDownLink > a').click(); // can also use [name=download_transactions_top]
+          /* Download transactions for specific dates: {
+          document.querySelector('#cust-date').click();
+          document.querySelector('#start-date').value = '03/01/2014';
+          document.querySelector('#end-date').value = '02/06/2018';
+          } */
+          document.querySelector('#select_filetype').value = "csv";
+          document.querySelector('#select_txnperiod').value =
+            document.querySelector('#select_txnperiod > option:nth-child(${statements_i})').value;
+          document.querySelector('.submit-download').click();`);
+      } else if (accountType === 'CREDIT') {
+        await page.waitForSelector('[name=download_transactions_top]');
+        await page.evaluate(`
+          document.querySelector('[name=download_transactions_top]').click();
+          // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
+          document.querySelector('#select_filetype').value = "&formatType=csv";
+          document.querySelector('#select_transaction').value =
+            document.querySelector('#select_transaction > option:nth-child(${statements_i})').value;
+          document.querySelector('.submit-download').click();`);
+      }
+      var csvFilename = null;
+      try {
+        csvFilename = await fileCreationP;
+      } catch(e) {
+        logger.log(e);
+      }
+      if (csvFilename) {
+        const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
+        await util.unlink(DOWNLOAD_DIR + csvFilename);
+        csvs.push(csvContents);
+      }
     }
-    var csvFilename = null;
-    try {
-      csvFilename = await fileCreationP;
-    } catch(e) {
-      logger.log(e);
-    }
-    if (csvFilename) {
-      const csvContents = (await util.readFile(DOWNLOAD_DIR + csvFilename)).toString();
-      await util.unlink(DOWNLOAD_DIR + csvFilename);
 
-      downloadedData.push({
-        name: nameBalance[i].name,
-        balance: nameBalance[i].balance,
-        accountId: nameBalance[i].accountId,
-        csv: csvContents,
-        _type: accountType
-      });
-    }
+    downloadedData.push({
+      name: nameBalance[i].name,
+      balance: nameBalance[i].balance,
+      accountId: nameBalance[i].accountId,
+      csvs: csvs,
+      _type: accountType
+    });
 
     const navigationPromise = page.waitForNavigation();
     util.waitAndClick(page, BACK_TO_ACCOUNT_SEL, logger); // no need to await here since waitForNavigation

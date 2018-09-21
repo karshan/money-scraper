@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "lib/index.js",
   "scripts": {
-    "prod": "GOOGLE_APPLICATION_CREDENTIALS=svc-acc-key.json node ./lib/index.js",
+    "prod": "while [ 1 ];do GOOGLE_APPLICATION_CREDENTIALS=svc-acc-key.json node ./lib/index.js; echo \"CRASHED!!!\"; sleep 10; done",
     "build": "babel src/ -d lib/",
     "clean": "rm -rf lib",
     "flow": "flow status"
