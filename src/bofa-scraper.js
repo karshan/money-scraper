@@ -61,9 +61,10 @@ async function login(state: State, page, creds, logger : Logger): Promise<{ stat
       new RegExp("(\.gif|\.png|\.css|\.js|\.woff)$", "i"), logger));
   }
 
+  const navP = page.waitForNavigation();
   await util.waitAndClick(page, SIGN_IN_BUTTON_SEL, logger);
 
-  await page.waitForNavigation();
+  await navP;
 
   const pageAfterLogin = await Promise.race([
     page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
