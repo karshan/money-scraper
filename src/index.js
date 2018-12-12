@@ -9,6 +9,7 @@ const fetch = require('node-fetch');
 
 const SOCKET = "scraper.sock";
 
+// TODO ensure webhookURL is localhost ?
 const postToWebhook = webhookURL => result => {
   const config = {
     method: "POST",
@@ -40,4 +41,4 @@ app.post('/bofa', async (req, res) => {
   res.send(`It's happening BofA`);
 });
 
-app.listen(8003, '127.0.0.1');
+app.listen(3200, '127.0.0.1');
