@@ -18,12 +18,14 @@ const postToWebhook = webhookURL => result => {
     },
     body: JSON.stringify(result)
   }
+  console.log("done");
   return fetch(webhookURL, config)
 }
 
 app.use(bodyParser.json());
 
 app.post('/chase', async (req, res) => {
+  console.log("scraping chase");
   chaseScraper
   .scrape(req.body.creds)
   .then(postToWebhook(req.body.webhookURL))
@@ -33,6 +35,7 @@ app.post('/chase', async (req, res) => {
 });
 
 app.post('/bofa', async (req, res) => {
+  console.log("scraping bofa");
   bofaScraper
   .scrape(req.body.creds)
   .then(postToWebhook(req.body.webhookURL))

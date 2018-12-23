@@ -234,7 +234,12 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
             document.querySelector('#select_txnperiod > option:nth-child(${statements_i})').value;
           document.querySelector('.submit-download').click();`);
       } else if (accountType === 'CREDIT') {
-        await page.waitForSelector('[name=download_transactions_top]');
+        // this selector is only presents if the statement is non-empty
+        try {
+          await page.waitForSelector('[name=download_transactions_top]');
+        } catch(e) {
+          continue;
+        }
         await page.evaluate(`
           document.querySelector('[name=download_transactions_top]').click();
           // for credit no custom date, list of options is: document.querySelectorAll('#select_transaction > option')
