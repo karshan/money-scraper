@@ -1,16 +1,25 @@
 module Main where
 
-import Toppokki as T
 import Prelude
-import Effect.Aff (launchAff_)
-import Effect (Effect)
-import QuickServe (JSON(..), POST, RequestBody(..), quickServe)
-import Data.Maybe (Maybe (..))
-import Foreign.Class (class Decode, class Encode)
-import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
-import Foreign.Generic.Types (Options)
+
 import Data.Generic.Rep (class Generic)
 import Data.Map (Map)
+import Data.Maybe (Maybe(..))
+import Data.Nullable (toNullable)
+import Effect (Effect)
+import Effect.Aff (launchAff_)
+import Effect.Console (log)
+import Foreign.Class (class Decode, class Encode)
+import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
+import Node.HTTP (listen)
+import Node.HTTP as HTTP
+import Node.Websocket (ConnectionClose, ConnectionMessage, EventProxy(EventProxy), Request, on)
+import Node.Websocket.Connection (remoteAddress, sendMessage)
+import Node.Websocket.Request (accept, origin)
+import Node.Websocket.Server (newWebsocketServer)
+import Node.Websocket.Types (TextFrame(..), defaultServerConfig)
+import Toppokki as T
+import Data.Either (Either(..))
 
 browserStuff :: Effect Unit
 browserStuff = launchAff_ do
@@ -22,42 +31,48 @@ browserStuff = launchAff_ do
   _ <- T.pdf {path: "./test/test.pdf"} page
   T.close browser
 
-jsonOpts :: Options
-jsonOpts = defaultOptions { unwrapSingleConstructors = true }
+data WSRequest =
+    Chase ChaseCreds
+  | Bofa BofaCreds
 
-newtype ChaseRequest = ChaseRequest { webhookURL :: String, creds :: ChaseCreds }
 newtype ChaseCreds = ChaseCreds { username :: String, password :: String }
-newtype BofaRequest = BofaRequest { webhookURL :: String, creds :: BofaCreds }
 newtype BofaCreds = BofaCreds { username :: String, password :: String, secretQuestionAnswers :: Map String String }
 
-derive instance genericChaseRequest :: Generic ChaseRequest _
+main :: Effect Unit
+main = do
+  httpServer <- HTTP.createServer \req resp -> log "HTTP request"
+  listen
+    httpServer
+      { hostname: "localhost", port: 3200, backlog: Nothing } do
+         log "Server listening"
+
+  wsServer <- newWebsocketServer (defaultServerConfig httpServer)
+
+  on request wsServer \req -> do
+    log ("New connection from: " <> show (origin req))
+    conn <- accept req (toNullable Nothing) (origin req)
+    log "New connection accepted"
+    on message conn \msg -> do
+      case msg of
+        Left (TextFrame {utf8Data}) ->
+          log ("Received msg: " <> utf8Data)
+        Right _ -> log ("Received RIGHT")
+
+      sendMessage conn msg
+    on close conn \_ _ -> do
+      log ("Peer disconnected " <> remoteAddress conn)
+  where
+    close = EventProxy :: EventProxy ConnectionClose
+    message = EventProxy :: EventProxy ConnectionMessage
+    request = EventProxy :: EventProxy Request
+
 derive instance genericChaseCreds :: Generic ChaseCreds _
 derive instance genericBofaCreds :: Generic BofaCreds _
-derive instance genericBofaRequest :: Generic BofaRequest _
-instance decodeChaseRequest :: Decode ChaseRequest where
-  decode = genericDecode jsonOpts
-instance encodeChaseRequest :: Encode ChaseRequest where
-  encode = genericEncode jsonOpts
 instance decodeChaseCreds :: Decode ChaseCreds where
-  decode = genericDecode jsonOpts
+  decode = genericDecode defaultOptions
 instance encodeChaseCreds :: Encode ChaseCreds where
-  encode = genericEncode jsonOpts
-instance decodeBofaRequest :: Decode BofaRequest where
-  decode = genericDecode jsonOpts
-instance encodeBofaRequest :: Encode BofaRequest where
-  encode = genericEncode jsonOpts
+  encode = genericEncode defaultOptions
 instance decodeBofaCreds :: Decode BofaCreds where
-  decode = genericDecode jsonOpts
+  decode = genericDecode defaultOptions
 instance encodeBofaCreds :: Encode BofaCreds where
-  encode = genericEncode jsonOpts
-
-chase :: RequestBody (JSON ChaseRequest) -> POST String
-chase (RequestBody (JSON (ChaseRequest { webhookURL, creds }))) = pure ""
-
-bofa :: RequestBody (JSON BofaRequest) -> POST String
-bofa (RequestBody (JSON (BofaRequest { webhookURL, creds }))) = pure ""
-
-main :: Effect Unit
-main =
-  let opts = { hostname: "localhost", port: 3200, backlog: Nothing }
-  in quickServe opts { chase, bofa }
+  encode = genericEncode defaultOptions
