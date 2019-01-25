@@ -10,6 +10,7 @@
     "purescript-prelude": "^4.1.0",
     "purescript-console": "^4.2.0",
     "purescript-toppokki": "^1.0.0",
+    "purescript-quickserve": "^3.0.0",
     "purescript-foreign-generic": "git://github.com/karshan/purescript-foreign-generic#4ad6460b30f584c66d3f1d1ee3c9e89030806c84",
     "purescript-effect": "^2.0.0",
     "purescript-node-websocket": "git://github.com/karshan/purescript-node-websocket#480be57a04d073447fae3d15f3935fc29d9f2334"
