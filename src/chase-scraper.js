@@ -94,7 +94,7 @@ async function performRequests(page, logger) {
       const req = https.request({
         hostname: 'secure05c.chase.com',
         port: 443,
-        path: '/svc/rr/accounts/secure/v1/account/activity/card/list',
+        path: '/svc/rr/accounts/secure/v2/activity/card/list',
         method: 'POST',
         headers: {
           'User-Agent': USER_AGENT,
