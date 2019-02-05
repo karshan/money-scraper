@@ -9,11 +9,13 @@
   "dependencies": {
     "purescript-prelude": "^4.1.0",
     "purescript-console": "^4.2.0",
-    "purescript-toppokki": "^1.0.0",
+    "purescript-toppokki": "git://github.com/karshan/purescript-toppokki#5ab934a34d292b303188dcc243c9a456d9f26bf9",
+    "purescript-transformers": "^4.1.0",
     "purescript-quickserve": "^3.0.0",
+    "purescript-profunctor-lenses": "^5.0.0",
+    "purescript-milkis": "^6.0.0",
     "purescript-foreign-generic": "git://github.com/karshan/purescript-foreign-generic#4ad6460b30f584c66d3f1d1ee3c9e89030806c84",
-    "purescript-effect": "^2.0.0",
-    "purescript-node-websocket": "git://github.com/karshan/purescript-node-websocket#480be57a04d073447fae3d15f3935fc29d9f2334"
+    "purescript-argonaut": "^5.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"
