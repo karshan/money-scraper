@@ -1,6 +1,7 @@
 module Scrapers.Chase where
 
 import Control.Monad.Rec.Class
+import Data.Argonaut
 import Prelude
 import Toppokki
 import Types
@@ -10,13 +11,13 @@ import Control.Monad.Error.Class (class MonadThrow)
 import Data.Array (head, filterA)
 import Data.Either (Either(..), either)
 import Data.Foldable (intercalate)
-import Data.Traversable (traverse)
 import Data.Lens ((^.))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Options (Options, (:=))
 import Data.String.Regex (Regex, regex, test)
+import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff (Aff, Milliseconds(..), delay, effectCanceler, error, launchAff_, makeAff, parallel, sequential, throwError)
+import Effect.Aff (Aff, Milliseconds(..), attempt, delay, effectCanceler, error, launchAff_, makeAff, parallel, sequential, throwError)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign.Object (Object)
@@ -24,7 +25,6 @@ import Foreign.Object as Object
 import Milkis (Headers)
 import Milkis as Milkis
 import Milkis.Impl.Node (nodeFetch)
-import Data.Argonaut
 
 -- UTIL
 bool :: forall a. a -> a -> Boolean -> a
@@ -98,10 +98,11 @@ logonErrorSel = Selector "#inner-logon-error"
 
 -- URL regex used with waitForUrlRegex()
 -- https://secure05c.chase.com/svc/rr/accounts/secure/v2/activity/card/list
-activityCardListRegex = regex "/activity/card/list$" mempty
+eActivityCardListRegex = regex "/activity/card/list$" mempty
 
 login :: Page -> ChaseCreds -> Regex -> Aff LoginResult
 login page creds activityCardList = do
+  -- Wait on iframe if it exists otherwise wait on page
   let wait sel p = do
         mFrame <- liftEffect (findM (\f -> (_ == loginIframeName) <$> name f) =<< frames p)
         maybe (pageWaitForSelector sel {} p)
@@ -119,61 +120,70 @@ login page creds activityCardList = do
   sequential
     (p (pure LoginFailed <* wait logonErrorSel page) <|>
      p (pure LoginSucceeded <* waitForUrlRegex activityCardList page) <|>
-     p (pure TwoFactorRequired <* wait (Selector "button#requestDeliveryDevices-sm") page) <|>
-     p (pure LoginTimeout <* delay (Milliseconds 15000.0)))
+     p (pure TwoFactorRequired <* wait (Selector "button#requestDeliveryDevices-sm") page))
 
 httpPost :: Milkis.URL -> Headers -> String -> Aff Json
 httpPost url headers body = do
   respText <- Milkis.text =<< Milkis.fetch nodeFetch url { method: Milkis.postMethod, body: body, headers: headers }
   either (throwError <<< error) pure $ jsonParser respText
 
-performRequests :: Array Cookie -> Aff Unit
+-- FIXME preserve accountTiles data
+-- Switch to genericDecodeJSON ?
+performRequests :: Array Cookie -> Aff (Array Json)
 performRequests cs = do
+  let hdrs = (Milkis.makeHeaders {
+        "User-Agent": userAgent,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "Cookie": renderCookies cs,
+        "x-jpmc-csrf-token": "NONE"
+      })
   resp <- httpPost
---     (Milkis.URL "https://secure05c.chase.com/svc/rl/accounts/secure/v1/app/data/list")
     (Milkis.URL "https://secure05c.chase.com/svc/rr/accounts/secure/v4/dashboard/tiles/list")
-    (Milkis.makeHeaders {
-      "User-Agent": userAgent,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-      "Cookie": renderCookies cs,
-      "x-jpmc-csrf-token": "NONE"
-    })
+    hdrs
     "cache=1"
-  let (accountIds :: Either String (Array Int)) =
+  (accountIds :: Array Int) <-
+    either (throwError <<< error <<< ("decodeAccountIds: " <> _)) pure $
         traverse (_ .: "accountId") =<< (_ .: "accountTiles") =<< decodeJson resp
-  liftEffect $ log (either ("error: " <> _) show accountIds)
+  liftEffect $ log (show accountIds)
+  traverse
+    (\accId ->
+        httpPost (Milkis.URL "https://secure05c.chase.com/svc/rr/accounts/secure/v2/activity/card/list")
+          hdrs
+          ("accountId=" <> show accId <> "&filterTranType=ALL&statementPeriodId=ALL"))
+    accountIds
 
-tmpTest :: Effect Unit
-tmpTest = do
-  let (result :: Either String (Array Json)) = do
-        resp <- jsonParser "{ \"accountTiles\": [1, 2] }"
-        x <- decodeJson resp
-        x .: "accountTiles"
-  log "hello"
-  log (either identity (intercalate "\n" <<< map stringify) result)
-  {-
-    foo <- x .: "foo" -- mandatory field
-    bar <- x .:? "bar" -- optional field
-    baz <- x .:? "baz" .!= false -- optional field with default value of `false`
-    -}
-    -- (Milkis.URL "https://secure05c.chase.com/svc/rr/accounts/secure/v2/activity/card/list")
+log_ :: String -> Aff Unit
+log_ s = liftEffect (log s)
 
-scrape :: ChaseCreds -> Effect Unit
-scrape creds = launchAff_ do
+scrape :: ChaseCreds -> Aff ScrapeResult
+scrape creds = do
+  activityCardListRegex <- either (throwError <<< error) pure eActivityCardListRegex
   browser <- launch { headless: false, userDataDir: "chrome-dir" }
   page <- newPage browser
   setUserAgent userAgent page
   setViewport { width: 1920, height: 1080 } page
   -- causes error ? allowDownloads "./downloads/" page
-  loginRes <- either
-    (throwError <<< error)
-    (login page creds)
-    activityCardListRegex
-  liftEffect $ log (show loginRes)
-  case loginRes of
-       LoginSucceeded -> do
-         cs <- cookies page
-         performRequests cs
-       _ -> pure unit
+  delay (Milliseconds 1000.0)
+  res <- go (AttemptingLogin 5 page activityCardListRegex)
   close browser
+  pure res
+    where
+      go :: State -> Aff ScrapeResult
+      go (AttemptingLogin 0 _ _) = pure Failure
+      go (AttemptingLogin n page activityCardListRegex) = do
+        r <- attempt (login page creds activityCardListRegex)
+        case r of
+             Right LoginSucceeded -> do
+               cs <- cookies page
+               go (LoggedIn cs)
+             Right LoginFailed -> do
+               log_ "invalid username/password"
+               pure Failure
+             Right TwoFactorRequired -> do
+               log_ "two factor required"
+               pure Failure
+             Left err -> do
+               log_ ("Aff error: " <> show err)
+               go (AttemptingLogin (n - 1) page activityCardListRegex)
+      go (LoggedIn cs) = Success <$> performRequests cs

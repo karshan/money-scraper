@@ -9,6 +9,9 @@ import Data.Map (Map)
 import Data.Newtype (class Newtype, wrap, unwrap)
 import Foreign.Class (class Decode, class Encode)
 import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
+import Toppokki (Page, Cookie)
+import Data.Argonaut (Json)
+import Data.String.Regex (Regex)
 
 newtype ChaseRequest = ChaseRequest { webhookURL :: String, creds :: ChaseCreds }
 newtype ChaseCreds = ChaseCreds { username :: String, password :: String }
@@ -19,7 +22,6 @@ data LoginResult =
     LoginFailed
   | LoginSucceeded
   | TwoFactorRequired
-  | LoginTimeout
 
 -- lenses
 username :: forall n r. Newtype n { username :: String | r } => Lens' n String
@@ -27,6 +29,14 @@ username = lens (_.username <<< unwrap) $ \s b -> wrap $ _ { username = b } $ un
 
 password :: forall n r. Newtype n { password :: String | r } => Lens' n String
 password = lens (_.password <<< unwrap) $ \s b -> wrap $ _ { password = b } $ unwrap s
+
+data State =
+    AttemptingLogin Int Page Regex
+  | LoggedIn (Array Cookie)
+
+data ScrapeResult =
+    Success (Array Json)
+  | Failure
 
 derive instance genericChaseRequest :: Generic ChaseRequest _
 derive instance genericChaseCreds :: Generic ChaseCreds _
