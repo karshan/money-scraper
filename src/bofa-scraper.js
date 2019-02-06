@@ -294,7 +294,7 @@ async function scrape(creds: Creds) {
    */
   const browser = await puppeteer.launch({
     headless: true,
-    userDataDir: "chrome-profile"
+    userDataDir: "bofa-" + creds.username
   });
   const page = await browser.newPage();
 
