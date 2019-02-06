@@ -49,13 +49,13 @@ async function performRequests(page, logger) {
   const cookies = await page.cookies();
 
   logger.log("/tiles/list START");
-  const accountTilesRaw = await new Promise(function(resolve, reject) {
+  const appDataRaw = await new Promise(function(resolve, reject) {
     const body = "cache=1"; // This is required. (probably just a non empty body is required
     var response = "";
     const req = https.request({
       hostname: 'secure05c.chase.com',
       port: 443,
-      path: '/svc/rr/accounts/secure/v4/dashboard/tiles/list',
+      path: '/svc/rl/accounts/secure/v1/app/data/list',
       method: 'POST',
       headers: {
         'User-Agent': USER_AGENT,
@@ -73,11 +73,11 @@ async function performRequests(page, logger) {
     req.on('error', (e) => reject("/tiles/list failed with: " + JSON.stringify(e)))
     req.write(body);
   });
-  logger.log({accountTilesRaw: accountTilesRaw});
+  logger.log({appDataRaw: appDataRaw});
 
-  var accountTiles
+  var accountTiles;
   try {
-    accountTiles = JSON.parse(accountTilesRaw).accountTiles;
+    accountTiles = JSON.parse(appDataRaw).cache.find((a) => a.url == "/svc/rr/accounts/secure/v4/dashboard/tiles/list").response.accountTiles;
   } catch(e) {
     logger.log(`failed to parse accountTiles JSON: ${e}`);
     iframescreenshot = await page.evaluate(() => window.frames[0].document.body.innerHTML);
