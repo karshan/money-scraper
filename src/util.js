@@ -92,23 +92,23 @@ function promiseTimeout(ms, promise){
 }
 
 function waitForResponse(page, predicate, logger) {
-  return promiseTimeout(15000, new Promise(function(resolve, reject) {
+  return promiseTimeout(30000, new Promise(function(resolve, reject) {
     var responseHandler = function(response) {
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
         logger.log(`waitForResponse(url: ${response.request().url()}) END`);
-        resolve();
+        resolve(response);
       }
     }
     page.on('response', responseHandler);
-  }), true);
+  }).then((response) => response.buffer()));
 }
 
 function waitForUrlRegex(page, urlRegex, logger) {
   logger.log(`waitForUrlRegex(${urlRegex}) START`);
   return waitForResponse(page, (req, resp) => urlRegex.test(req.url()), logger).catch((e) => {
     logger.log(`waitForUrlRegex(${urlRegex}) TIMEOUT`);
-    return e;
+    throw e;
   });
 }
 

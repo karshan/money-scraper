@@ -15,16 +15,39 @@ const PASSWORD_SEL = "#password-input-field"
 // URL regex used with waitForUrlRegex()
 // https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list
 const ACTIVITY_CARD_LIST_REGEX = new RegExp("/account/activity/card/list$");
+const SIGN_OUT_BUTTON_SEL = "#convo-deck-sign-out"
 
 // LoginPage Url
 // Navigating here will open the dashboard if already logged in.
 const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
 
 async function login(page, creds, logger) {
-  await page.goto(LOGIN_PAGE_URL);
+  try {
+    await page.goto(LOGIN_PAGE_URL);
+  } catch(e) {
+    logger.log("initial nav timed out, bah whatever: " + e.toString());
+  }
 
-  // TODO Detect if we are already logged in. Could use page.title() probably
-  await page.waitForSelector('#' + LOGIN_IFRAME_NAME);
+  // Detect if we are already logged in.
+  const isLoggedIn = await Promise.race([
+    page.waitForSelector('#' + LOGIN_IFRAME_NAME).then((r) => false),
+    page.waitForSelector(SIGN_OUT_BUTTON_SEL).then((r) => true)
+  ]);
+
+  if (isLoggedIn) {
+    logger.log("already logged in");
+    page.waitFor(5000);
+    try {
+      await Promise.race([
+        page.waitForSelector('.account-tile').then((r) => true),
+        page.waitForSelector('.single-account-summary').then((r) => true)
+      ]);
+    } catch(e) {
+      logger.log("wait for account tile timed out");
+      return false;
+    }
+    return true;
+  }
 
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
 
@@ -35,10 +58,35 @@ async function login(page, creds, logger) {
   await util.frameWaitAndClick(logonbox, PASSWORD_SEL);
   await page.keyboard.type(creds.password);
 
+  navP = page.waitForNavigation({waitUntil: 'networkidle0'});
   await util.frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
+  logger.log("begin nav wait");
+  try {
+    await navP;
+  } catch(e) {
+    logger.log("nav wait timed out");
+    return false;
+  }
+  logger.log("end nav wait");
 
-  await util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
+  try {
+    await page.waitForSelector(SIGN_OUT_BUTTON_SEL); // util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
+  } catch(e) {
+    logger.log("wait for sign out button timed out");
+    return false;
+  }
 
+  try {
+    await Promise.race([
+      page.waitForSelector('.account-tile').then((r) => true),
+      page.waitForSelector('.single-account-summary').then((r) => true)
+    ]);
+  } catch(e) {
+    logger.log("wait for account tile timed out");
+    return false;
+  }
+
+  return true;
   // TODO check if we logged in successfully
   // if 2nd factor page is shown, this can be detected by checking for the existence of
   // button#requestDeliveryDevices
@@ -114,7 +162,12 @@ async function performRequests(page, logger) {
     });
     logger.log(`/card/list[${i}] END`);
     logger.log({jsonTransactions: jsonTransactions});
-    accountTiles[i].transactions = JSON.parse(jsonTransactions);
+    const parsedTs = JSON.parse(jsonTransactions);
+    // TODO: if transactions.status == 504 there was a temporary failure. Retry ?
+    if (parsedTs.status && parsedTs.status == 403) {
+      throw "wtf, still not signed in???";
+    }
+    accountTiles[i].transactions = parsedTs;
   }
   return accountTiles;
 }
@@ -145,10 +198,20 @@ async function scrape(creds) {
     downloadPath: DOWNLOAD_DIR
   });
 
-  await page.setViewport({ width: 800, height: 600 });
+  await page.setViewport({ width: 1920, height: 1080 });
 
   try {
-    await login(page, creds, logger);
+    var numTries = 5;
+    var success = false;
+    while (numTries >= 0) {
+      success = await login(page, creds, logger);
+      if (success) break;
+      numTries--;
+    }
+
+    if (success == false) {
+      throw "failed to login";
+    }
 
     const accountTiles = await performRequests(page, logger);
 
