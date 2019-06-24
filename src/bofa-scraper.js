@@ -47,7 +47,11 @@ type Creds = { username: string, password: string, secretQuestionAnswers: Object
 
 // AnyBrowserState -> ACCOUNTS | CHALLENGE | CAPTCHA
 async function login(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
-  await page.goto(LOGIN_PAGE_URL);
+  try {
+    await page.goto(LOGIN_PAGE_URL);
+  } catch(e) {
+    logger.log('initial nav timed out');
+  }
 
   await util.waitAndClick(page, USERNAME_SEL, logger);
   logger.log(USERNAME_SEL + ' resolved');
