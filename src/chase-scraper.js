@@ -1,9 +1,12 @@
 const https = require('https');
 const Logger = require('./logger');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const pluginStealth = require("puppeteer-extra-plugin-stealth")
+puppeteer.use(pluginStealth())
+
 const util = require('./util');
 
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
 
 // login page
@@ -50,6 +53,13 @@ async function login(page, creds, logger) {
   }
 
   const logonbox = await page.frames().find(f => f.name() === LOGIN_IFRAME_NAME);
+  if (logonbox === undefined || logonbox === null) {
+    throw {
+      msg: 'logonbox not found'
+    }
+  }
+
+  page.waitFor(5000);
 
   await util.frameWaitAndClick(logonbox, USERNAME_SEL);
   logger.log(USERNAME_SEL + ' resolved');
@@ -185,6 +195,7 @@ async function scrape(creds) {
    * dir is used instead which is deleted on browser.close(). This means
    * cookies and browser cache will not be saved.
    */
+  puppeteer.use(pluginStealth())
   const browser = await puppeteer.launch({
     headless: true,
     userDataDir: "chase-" + creds.username
@@ -204,7 +215,15 @@ async function scrape(creds) {
     var numTries = 5;
     var success = false;
     while (numTries >= 0) {
-      success = await login(page, creds, logger);
+      success = false;
+      try {
+        success = await login(page, creds, logger);
+      } catch (e) {
+        logger.log({
+          msg: `LOGIN FAILED; numTries = ${numTries}`,
+          exception: (e.toString() === "[object Object]") ? JSON.stringify(e) : e.toString(),
+        });
+      }
       if (success) break;
       numTries--;
     }

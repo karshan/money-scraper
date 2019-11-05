@@ -53,6 +53,8 @@ async function login(state: State, page, creds, logger : Logger): Promise<{ stat
     logger.log('initial nav timed out');
   }
 
+  await page.waitFor(10000);
+
   await util.waitAndClick(page, USERNAME_SEL, logger);
   logger.log(USERNAME_SEL + ' resolved');
   await page.keyboard.type(creds.username);
