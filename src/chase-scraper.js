@@ -12,8 +12,8 @@ const DOWNLOAD_DIR = './downloads/';
 // login page
 const LOGIN_IFRAME_NAME = "logonbox"
 const SIGN_IN_BUTTON_SEL = "#signin-button"
-const USERNAME_SEL = "#userId-input-field"
-const PASSWORD_SEL = "#password-input-field"
+const USERNAME_SEL = "#userId-text-input-field"
+const PASSWORD_SEL = "#password-text-input-field"
 
 // URL regex used with waitForUrlRegex()
 // https://secure05c.chase.com/svc/rr/accounts/secure/v1/account/activity/card/list
