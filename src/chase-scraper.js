@@ -59,7 +59,7 @@ async function login(page, creds, logger) {
     }
   }
 
-  page.waitFor(5000);
+  await page.waitFor(5000);
 
   await util.frameWaitAndClick(logonbox, USERNAME_SEL);
   logger.log(USERNAME_SEL + ' resolved');
