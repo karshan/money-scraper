@@ -43,6 +43,7 @@ async function login(page, creds, logger) {
     try {
       await Promise.race([
         page.waitForSelector('.account-tile').then((r) => true),
+        page.waitForSelector('.account-category').then((r) => true),
         page.waitForSelector('.single-account-summary').then((r) => true)
       ]);
     } catch(e) {

@@ -179,9 +179,13 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       return document.querySelectorAll(sel)[_i].innerText;
     }, ACCOUNTS_SEL, i);
 
-    const accountBalance = await page.evaluate((sel, _i) => {
-      return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
-    }, ACCOUNTS_SEL, i);
+    var accountBalance = 0;
+    try {
+      accountBalance = await page.evaluate((sel, _i) => {
+        return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
+      }, ACCOUNTS_SEL, i);
+    } catch(e) {
+    }
 
     const accountHref = await page.evaluate((sel, _i) => {
       return document.querySelectorAll(sel)[_i].href;
@@ -284,7 +288,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
 // TODO annotate return type
 async function scrape(creds: Creds) {
-  var logger = new Logger(false);
+  var logger = new Logger(true);
 
   if (typeof creds.username !== "string" ||
       typeof creds.password !== "string" ||
