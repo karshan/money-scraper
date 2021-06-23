@@ -1,12 +1,10 @@
 const https = require('https');
 const Logger = require('./logger');
 const puppeteer = require('puppeteer-extra');
-const pluginStealth = require("puppeteer-extra-plugin-stealth")
-puppeteer.use(pluginStealth())
 
 const util = require('./util');
 
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36"
 const DOWNLOAD_DIR = './downloads/';
 
 // login page
@@ -22,7 +20,7 @@ const SIGN_OUT_BUTTON_SEL = "#convo-deck-sign-out"
 
 // LoginPage Url
 // Navigating here will open the dashboard if already logged in.
-const LOGIN_PAGE_URL = 'https://secure05c.chase.com/web/auth/dashboard';
+const LOGIN_PAGE_URL = 'https://secure05a.chase.com/web/auth/dashboard';
 
 async function login(page, creds, logger) {
   try {
@@ -69,9 +67,9 @@ async function login(page, creds, logger) {
   await util.frameWaitAndClick(logonbox, PASSWORD_SEL);
   await page.keyboard.type(creds.password);
 
-  navP = page.waitForNavigation({waitUntil: 'networkidle0'});
+//  navP = page.waitForNavigation({waitUntil: 'networkidle0'});
   await util.frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
-  logger.log("begin nav wait");
+/*  logger.log("begin nav wait");
   try {
     await navP;
   } catch(e) {
@@ -79,6 +77,7 @@ async function login(page, creds, logger) {
     return false;
   }
   logger.log("end nav wait");
+  */
 
   try {
     await page.waitForSelector(SIGN_OUT_BUTTON_SEL); // util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
@@ -184,7 +183,7 @@ async function performRequests(page, logger) {
 }
 
 async function scrape(creds) {
-  var logger = new Logger(false);
+  var logger = new Logger(true);
 
   if (typeof creds.username !== "string" || typeof creds.password !== "string") {
     return { ok: false, error: 'bad creds' };
@@ -196,21 +195,25 @@ async function scrape(creds) {
    * dir is used instead which is deleted on browser.close(). This means
    * cookies and browser cache will not be saved.
    */
-  puppeteer.use(pluginStealth())
   const browser = await puppeteer.launch({
-    headless: true,
-    userDataDir: "chase-" + creds.username
+    headless: false,
+    userDataDir: "chase-" + creds.username,
+    executablePath: '/k/gits/money-scraper/node_modules/puppeteer/.local-chromium/linux-895174/chrome-linux/chrome'
   });
   const page = await browser.newPage();
-
-  await page.setUserAgent(USER_AGENT);
 
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',
     downloadPath: DOWNLOAD_DIR
   });
 
-  await page.setViewport({ width: 1920, height: 1080 });
+  // await page.setViewport({ width: 1920, height: 1080 });
+
+  function sleep(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
 
   try {
     var numTries = 5;

@@ -229,7 +229,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
     var csvs = [];
     for (var statements_i = 1; statements_i <= 2; statements_i++) {
       logger.log(`downloading statement ${statements_i}`);
-      const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger);
+      const fileCreationP = util.waitForFileCreation(DOWNLOAD_DIR, CSV_REGEX, logger).catch((e) => logger.log(e));
       if (accountType === 'DEBIT') {
         await page.waitForSelector('#depositDownLink > a');
         await page.evaluate(`
@@ -304,7 +304,8 @@ async function scrape(creds: Creds) {
    */
   const browser = await puppeteer.launch({
     headless: true,
-    userDataDir: "bofa-" + creds.username
+    userDataDir: "bofa-" + creds.username,
+    executablePath: '/k/gits/money-scraper/node_modules/puppeteer/.local-chromium/linux-895174/chrome-linux/chrome'
   });
   const page = await browser.newPage();
 
