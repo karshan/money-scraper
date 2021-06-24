@@ -3,14 +3,14 @@ const fs = require('fs');
 // log network requests made by puppeteer
 // usage: page.on('response', responseLogger);
 function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
-  return async function(response) {
+  return async function (response) {
     var request = response.request();
     var responseBody, resp;
     if (urlWhiteRegex.test(request.url()) && !urlBlackRegex.test(request.url())) {
 
       try {
         responseBody = await response.buffer();
-      } catch(e) {
+      } catch (e) {
       }
 
       var postData = null;
@@ -44,10 +44,10 @@ function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
 // to appear and then click it. frame: puppeteer.Frame
 async function frameWaitAndClick(frame, sel) {
   try {
-    await frame.waitForSelector(sel, {visible: true});
+    await frame.waitForSelector(sel, { visible: true });
     const toClick = await frame.$(sel);
     await toClick.click();
-  } catch(e) {
+  } catch (e) {
     throw {
       msg: `frameWaitAndClick(${sel}) FAILED`,
       exception: e.toString()
@@ -60,10 +60,10 @@ async function frameWaitAndClick(frame, sel) {
 async function waitAndClick(page, sel, logger) {
   try {
     logger.log(`waitAndClick(${sel}) START`);
-    await page.waitForSelector(sel, {visible: true});
+    await page.waitForSelector(sel, { visible: true });
     await page.click(sel);
     logger.log(`waitAndClick(${sel}) END`);
-  } catch(e) {
+  } catch (e) {
     throw {
       msg: `waitAndClick(${sel}) FAILED`,
       exception: e.toString()
@@ -71,12 +71,12 @@ async function waitAndClick(page, sel, logger) {
   }
 }
 
-function promiseTimeout(ms, promise){
+function promiseTimeout(ms, promise) {
   // Create a promise that rejects in <ms> milliseconds
   let id;
   let timeout = new Promise((resolve, reject) => {
     id = setTimeout(() => {
-      const msg = 'Timed out in '+ ms + 'ms.';
+      const msg = 'Timed out in ' + ms + 'ms.';
       reject(msg);
     }, ms)
   })
@@ -92,8 +92,8 @@ function promiseTimeout(ms, promise){
 }
 
 function waitForResponse(page, predicate, logger) {
-  return promiseTimeout(30000, new Promise(function(resolve, reject) {
-    var responseHandler = function(response) {
+  return promiseTimeout(30000, new Promise(function (resolve, reject) {
+    var responseHandler = function (response) {
       if (predicate(response.request(), response)) {
         page.removeListener('response', responseHandler);
         logger.log(`waitForResponse(url: ${response.request().url()}) END`);
@@ -101,7 +101,7 @@ function waitForResponse(page, predicate, logger) {
       }
     }
     page.on('response', responseHandler);
-  }).then((response) => response.buffer()));
+  }).then((response: { buffer: Function }) => response.buffer()));
 }
 
 function waitForUrlRegex(page, urlRegex, logger) {
@@ -114,7 +114,7 @@ function waitForUrlRegex(page, urlRegex, logger) {
 
 function waitForFileCreation(dir, fileRegex, logger) {
   logger.log(`waitForFileCreation(${dir}, ${fileRegex}) START`);
-  return promiseTimeout(15000, new Promise(function(resolve, reject) {
+  return promiseTimeout(15000, new Promise(function (resolve, reject) {
     const watcher = fs.watch(dir, (eventType, filename) => {
       if (eventType == "change" && fileRegex.test(filename)) {
         watcher.close();
@@ -126,16 +126,16 @@ function waitForFileCreation(dir, fileRegex, logger) {
 }
 
 function readFile(filename) {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function (resolve, reject) {
     fs.readFile(filename, (err, data) => {
-      if(err) reject(err);
+      if (err) reject(err);
       resolve(data)
     })
   })
 }
 
-function unlink(filename) {
-  return new Promise(function(resolve, reject) {
+function unlink(filename): Promise<void> {
+  return new Promise(function (resolve, reject) {
     fs.unlink(filename, (err) => {
       if (err) reject(err);
       resolve();
@@ -143,7 +143,7 @@ function unlink(filename) {
   });
 }
 
-module.exports = {
+export default {
   responseLogger: responseLogger,
   frameWaitAndClick: frameWaitAndClick,
   waitAndClick: waitAndClick,

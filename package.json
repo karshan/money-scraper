@@ -4,9 +4,9 @@
   "main": "lib/index.js",
   "scripts": {
     "prod": "while [ 1 ];do GOOGLE_APPLICATION_CREDENTIALS=svc-acc-key.json node ./lib/index.js; echo \"CRASHED!!!\"; sleep 10; done",
-    "build": "babel src/ -d lib/",
-    "clean": "rm -rf lib",
-    "flow": "flow status"
+    "build": "tsc",
+    "start": "node ./lib/index.js",
+    "clean": "rm -rf lib"
   },
   "author": "",
   "license": "ISC",
@@ -32,8 +32,6 @@
   "homepage": "https://github.com/karshan/money-scraper#readme",
   "description": "",
   "devDependencies": {
-    "babel-cli": "^6.26.0",
-    "babel-preset-flow": "^6.23.0",
-    "flow-bin": "^0.80.0"
+    "typescript": "^4.3.4"
   }
 }

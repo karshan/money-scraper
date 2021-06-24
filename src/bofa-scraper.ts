@@ -1,6 +1,5 @@
-// @flow
 const https = require('https');
-const Logger = require('./logger');
+import Logger from './logger'
 const puppeteer = require('puppeteer');
 const util = require('./util');
 const url = require('url');
@@ -46,10 +45,10 @@ type State = { tag: StateTag, numAttempts: number }
 type Creds = { username: string, password: string, secretQuestionAnswers: Object }
 
 // AnyBrowserState -> ACCOUNTS | CHALLENGE | CAPTCHA
-async function login(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
+async function login(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
   try {
     await page.goto(LOGIN_PAGE_URL);
-  } catch(e) {
+  } catch (e) {
     logger.log('initial nav timed out');
   }
 
@@ -82,7 +81,7 @@ async function login(state: State, page, creds, logger : Logger): Promise<{ stat
   return { state: { tag: pageAfterLogin, numAttempts: state.numAttempts }, output: null }
 }
 
-async function performChallenge(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
+async function performChallenge(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
   const challengeQuestion = await page.evaluate((sel) => document.querySelector(sel).innerText, CHALLENGE_QUESTION_SEL);
 
   const challengeKey = Object.keys(creds.secretQuestionAnswers).filter((a) => new RegExp(a, "i").test(challengeQuestion))[0];
@@ -105,7 +104,7 @@ async function performChallenge(state: State, page, creds, logger : Logger): Pro
   return { state: { tag: "ACCOUNTS", numAttempts: state.numAttempts }, output: null };
 }
 
-async function performCaptcha(state: State, page, logger : Logger): Promise<{ state: State, output: any }> {
+async function performCaptcha(state: State, page, logger: Logger): Promise<{ state: State, output: any }> {
   if (state.numAttempts >= 5) {
     throw "Failed after 5 attempts";
   }
@@ -114,7 +113,7 @@ async function performCaptcha(state: State, page, logger : Logger): Promise<{ st
 
   await page.waitForSelector(CAPTCHA_IMG_SEL);
   await page.waitFor((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
-  const natWidth = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
+  const natWidth: any = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
   logger.log({ natWidth });
 
   if (natWidth === 0) { // Img loaded with error
@@ -184,7 +183,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       accountBalance = await page.evaluate((sel, _i) => {
         return document.querySelectorAll(sel)[_i].parentNode.parentNode.querySelector('.AccountBalance').innerText
       }, ACCOUNTS_SEL, i);
-    } catch(e) {
+    } catch (e) {
     }
 
     const accountHref = await page.evaluate((sel, _i) => {
@@ -194,7 +193,6 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
     nameBalance.push({
       name: accountName,
       balance: accountBalance,
-      // $FlowFixMe
       accountId: url.parse(accountHref, true).query.adx
     });
   }
@@ -247,7 +245,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
         // this selector is only presents if the statement is non-empty
         try {
           await page.waitForSelector('[name=download_transactions_top]');
-        } catch(e) {
+        } catch (e) {
           continue;
         }
         await page.evaluate(`
@@ -261,7 +259,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       var csvFilename = null;
       try {
         csvFilename = await fileCreationP;
-      } catch(e) {
+      } catch (e) {
         logger.log(e);
       }
       if (csvFilename) {
@@ -291,8 +289,8 @@ async function scrape(creds: Creds) {
   var logger = new Logger(true);
 
   if (typeof creds.username !== "string" ||
-      typeof creds.password !== "string" ||
-      typeof creds.secretQuestionAnswers !== "object") {
+    typeof creds.password !== "string" ||
+    typeof creds.secretQuestionAnswers !== "object") {
     return { ok: false, error: 'bad creds' };
   }
 
@@ -326,7 +324,7 @@ async function scrape(creds: Creds) {
   try {
     while (state.tag != "DONE") {
       logger.log({ state });
-      switch(state.tag) {
+      switch (state.tag) {
         case "INITIAL":
           ({ state, output } = await login(state, page, creds, logger));
           break;
@@ -346,12 +344,12 @@ async function scrape(creds: Creds) {
       downloadedData: output,
       log: logger.getLog()
     };
-  } catch(e) {
+  } catch (e) {
     var screenshot, domscreenshot;
     try {
       screenshot = (await page.screenshot()).toString('base64');
       domscreenshot = await page.evaluate(`document.querySelector("body").innerHTML`);
-    } catch(e) {
+    } catch (e) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
@@ -367,6 +365,6 @@ async function scrape(creds: Creds) {
   }
 }
 
-module.exports = {
-  scrape: scrape
+export default {
+  scrape
 }

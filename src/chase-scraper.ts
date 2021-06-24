@@ -25,7 +25,7 @@ const LOGIN_PAGE_URL = 'https://secure05a.chase.com/web/auth/dashboard';
 async function login(page, creds, logger) {
   try {
     await page.goto(LOGIN_PAGE_URL);
-  } catch(e) {
+  } catch (e) {
     logger.log("initial nav timed out, bah whatever: " + e.toString());
   }
 
@@ -44,7 +44,7 @@ async function login(page, creds, logger) {
         page.waitForSelector('.account-category').then((r) => true),
         page.waitForSelector('.single-account-summary').then((r) => true)
       ]);
-    } catch(e) {
+    } catch (e) {
       logger.log("wait for account tile timed out");
       return false;
     }
@@ -67,21 +67,21 @@ async function login(page, creds, logger) {
   await util.frameWaitAndClick(logonbox, PASSWORD_SEL);
   await page.keyboard.type(creds.password);
 
-//  navP = page.waitForNavigation({waitUntil: 'networkidle0'});
+  //  navP = page.waitForNavigation({waitUntil: 'networkidle0'});
   await util.frameWaitAndClick(logonbox, SIGN_IN_BUTTON_SEL);
-/*  logger.log("begin nav wait");
-  try {
-    await navP;
-  } catch(e) {
-    logger.log("nav wait timed out");
-    return false;
-  }
-  logger.log("end nav wait");
-  */
+  /*  logger.log("begin nav wait");
+    try {
+      await navP;
+    } catch(e) {
+      logger.log("nav wait timed out");
+      return false;
+    }
+    logger.log("end nav wait");
+    */
 
   try {
     await page.waitForSelector(SIGN_OUT_BUTTON_SEL); // util.waitForUrlRegex(page, ACTIVITY_CARD_LIST_REGEX, logger);
-  } catch(e) {
+  } catch (e) {
     logger.log("wait for sign out button timed out");
     return false;
   }
@@ -91,7 +91,7 @@ async function login(page, creds, logger) {
       page.waitForSelector('.account-tile').then((r) => true),
       page.waitForSelector('.single-account-summary').then((r) => true)
     ]);
-  } catch(e) {
+  } catch (e) {
     logger.log("wait for account tile timed out");
     return false;
   }
@@ -107,7 +107,7 @@ async function performRequests(page, logger) {
   const cookies = await page.cookies();
 
   logger.log("/tiles/list START");
-  const appDataRaw = await new Promise(function(resolve, reject) {
+  const appDataRaw: string = await new Promise(function (resolve, reject) {
     const body = "cache=1"; // This is required. (probably just a non empty body is required
     var response = "";
     const req = https.request({
@@ -120,10 +120,10 @@ async function performRequests(page, logger) {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(body),
         'Accept': 'application/json',
-        'Cookie': cookies.map((a) => a.name + '=' + a.value).join('; ') ,
+        'Cookie': cookies.map((a) => a.name + '=' + a.value).join('; '),
         'x-jpmc-csrf-token': 'NONE'
       }
-    }, function(res) {
+    }, function (res) {
       res.setEncoding('utf8');
       res.on('data', (chunk) => { response = response + chunk });
       res.on('end', () => resolve(response));
@@ -131,14 +131,14 @@ async function performRequests(page, logger) {
     req.on('error', (e) => reject("/tiles/list failed with: " + JSON.stringify(e)))
     req.write(body);
   });
-  logger.log({appDataRaw: appDataRaw});
+  logger.log({ appDataRaw: appDataRaw });
 
   var accountTiles;
   try {
     accountTiles = JSON.parse(appDataRaw).cache.find((a) => a.url == "/svc/rr/accounts/secure/v4/dashboard/tiles/list").response.accountTiles;
-  } catch(e) {
+  } catch (e) {
     logger.log(`failed to parse accountTiles JSON: ${e}`);
-    iframescreenshot = await page.evaluate(() => window.frames[0].document.body.innerHTML);
+    const iframescreenshot = await page.evaluate(() => window.frames[0].document.body.innerHTML);
     logger.log({ iframescreenshot });
     throw "Probably Chase \"2nd factor\" required";
   }
@@ -146,7 +146,7 @@ async function performRequests(page, logger) {
   for (var i = 0; i < accountTiles.length; i++) {
     logger.log(`/card/list[${i}] START`);
 
-    jsonTransactions = await new Promise(function(resolve, reject) {
+    const jsonTransactions: string = await new Promise(function (resolve, reject) {
       const body = `accountId=${accountTiles[i].accountId}&filterTranType=ALL&statementPeriodId=ALL`;
       var response = "";
       const req = https.request({
@@ -159,10 +159,10 @@ async function performRequests(page, logger) {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(body),
           'Accept': 'application/json',
-          'Cookie': cookies.map((a) => a.name + '=' + a.value).join('; ') ,
+          'Cookie': cookies.map((a) => a.name + '=' + a.value).join('; '),
           'x-jpmc-csrf-token': 'NONE'
         }
-      }, function(res) {
+      }, function (res) {
         res.setEncoding('utf8');
         res.on('data', (chunk) => { response = response + chunk });
         res.on('end', () => resolve(response));
@@ -171,7 +171,7 @@ async function performRequests(page, logger) {
       req.write(body);
     });
     logger.log(`/card/list[${i}] END`);
-    logger.log({jsonTransactions: jsonTransactions});
+    logger.log({ jsonTransactions: jsonTransactions });
     const parsedTs = JSON.parse(jsonTransactions);
     // TODO: if transactions.status == 504 there was a temporary failure. Retry ?
     if (parsedTs.status && parsedTs.status == 403) {
@@ -243,12 +243,12 @@ async function scrape(creds) {
       accountTiles: accountTiles,
       log: logger.getLog()
     };
-  } catch(e) {
+  } catch (e) {
     var screenshot, domscreenshot;
     try {
       screenshot = (await page.screenshot()).toString('base64');
       domscreenshot = await page.evaluate(() => document.querySelector("body").innerHTML);
-    } catch(e) {
+    } catch (e) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
@@ -264,6 +264,6 @@ async function scrape(creds) {
   }
 }
 
-module.exports = {
-  scrape: scrape
+export default {
+  scrape
 }
