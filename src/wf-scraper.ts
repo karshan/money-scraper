@@ -1,10 +1,6 @@
-// @flow
-const https = require('https');
-const Logger = require('./logger');
-const puppeteer = require('puppeteer');
-const pluginStealth = require("puppeteer-extra-plugin-stealth")
-const util = require('./util');
-const url = require('url');
+import Logger from './logger';
+import puppeteer from 'puppeteer';
+import util from './util';
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
@@ -28,10 +24,10 @@ type State = { tag: StateTag, numAttempts: number }
 
 type Creds = { username: string, password: string, secretQuestionAnswers: Object }
 
-async function login(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
+async function login(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
   try {
     await page.goto(LOGIN_PAGE_URL);
-  } catch(e) {
+  } catch (e) {
     logger.log('initial nav timed out');
   }
 
@@ -57,7 +53,7 @@ async function login(state: State, page, creds, logger : Logger): Promise<{ stat
   return { state: { tag: pageAfterLogin, numAttempts: state.numAttempts }, output: null }
 }
 
-async function login2(state: State, page, creds, logger : Logger): Promise<{ state: State, output: any }> {
+async function login2(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
   await util.waitAndClick(page, USERNAME2_SEL, logger);
   await page.keyboard.type(creds.username);
 
@@ -98,7 +94,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       accountBalance = await page.evaluate((sel, _i) => {
         return document.querySelector(sel).children[0].children[_i].children[0].children[0].children[1].children[0].innerText
       }, ACCOUNTS_SEL, i);
-    } catch(e) {
+    } catch (e) {
     }
 
     var accountId = null;
@@ -106,7 +102,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
       accountId = await page.evaluate((sel, _i) => {
         return document.querySelector(sel).children[0].children[_i].querySelector('div > div').children[0].children[0].children[0].getAttribute('aria-labelledby').split(' ')[0]
       }, ACCOUNTS_SEL, i);
-    } catch(e) {}
+    } catch (e) { }
 
     nameBalance.push({
       name: accountName,
@@ -148,7 +144,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
     var csvContents = null;
     try {
       csvFilename = await fileCreationP;
-    } catch(e) {
+    } catch (e) {
       logger.log(e);
     }
     if (csvFilename) {
@@ -172,7 +168,7 @@ async function scrape(creds: Creds) {
   var logger = new Logger(true);
 
   if (typeof creds.username !== "string" ||
-      typeof creds.password !== "string") {
+    typeof creds.password !== "string") {
     return { ok: false, error: 'bad creds' };
   }
 
@@ -193,6 +189,7 @@ async function scrape(creds: Creds) {
   // FIXME a fixed download_dir is a problem for concurrent requests
   // because headless chrome doesn't download to filename (1) if
   // filename exists for some reason.
+  // @ts-ignore: Private member access error
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',
     downloadPath: DOWNLOAD_DIR
@@ -207,7 +204,7 @@ async function scrape(creds: Creds) {
     while (state.tag != "DONE") {
       if (state.numAttempts > 5) { logger.log("TOO MANY ATTEMPTS"); break; }
       logger.log({ state });
-      switch(state.tag) {
+      switch (state.tag) {
         case "INITIAL":
           ({ state, output } = await login(state, page, creds, logger));
           break;
@@ -224,12 +221,12 @@ async function scrape(creds: Creds) {
       downloadedData: output,
       log: logger.getLog()
     };
-  } catch(e) {
+  } catch (e) {
     var screenshot, domscreenshot;
     try {
-      screenshot = (await page.screenshot()).toString('base64');
+      let screenshot = (await page.screenshot() as any).toString();
       domscreenshot = await page.evaluate(`document.querySelector("body").innerHTML`);
-    } catch(e) {
+    } catch (e) {
     } finally {
       logger.log({
         msg: `SCRAPER FAILURE`,
@@ -245,6 +242,6 @@ async function scrape(creds: Creds) {
   }
 }
 
-module.exports = {
-  scrape: scrape
+export default {
+  scrape
 }

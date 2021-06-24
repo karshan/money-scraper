@@ -1,12 +1,11 @@
-// @flow
-const bodyParser = require('body-parser');
-const chaseScraper = require('./chase-scraper');
-const bofaScraper = require('./bofa-scraper');
-const wfScraper = require('./wf-scraper');
-const express = require('express');
-const app = express();
-const fetch = require('node-fetch');
+import bodyParser from 'body-parser';
+import chaseScraper from './chase-scraper';
+import bofaScraper from './bofa-scraper';
+import wfScraper from './wf-scraper';
+import express from 'express';
+import fetch from 'node-fetch';
 
+const app = express();
 
 const SOCKET = "scraper.sock";
 
@@ -28,30 +27,30 @@ app.use(bodyParser.json());
 app.post('/chase', async (req, res) => {
   console.log("scraping chase");
   chaseScraper
-  .scrape(req.body.creds)
-  .then(postToWebhook(req.body.webhookURL))
-  .then(res => res.json())
-  .catch(err => console.log(err))
+    .scrape(req.body.creds)
+    .then(postToWebhook(req.body.webhookURL))
+    .then(res => res.json())
+    .catch(err => console.log(err))
   res.send(`It's happening Chase`);
 });
 
 app.post('/bofa', async (req, res) => {
   console.log("scraping bofa");
   bofaScraper
-  .scrape(req.body.creds)
-  .then(postToWebhook(req.body.webhookURL))
-  .then(res => res.json())
-  .catch(err => console.log(err))
+    .scrape(req.body.creds)
+    .then(postToWebhook(req.body.webhookURL))
+    .then(res => res.json())
+    .catch(err => console.log(err))
   res.send(`It's happening BofA`);
 });
 
 app.post('/wf', async (req, res) => {
   console.log("scraping wf");
   wfScraper
-  .scrape(req.body.creds)
-  .then(postToWebhook(req.body.webhookURL))
-  .then(res => res.json())
-  .catch(err => console.log(err))
+    .scrape(req.body.creds)
+    .then(postToWebhook(req.body.webhookURL))
+    .then(res => res.json())
+    .catch(err => console.log(err))
   res.send(`It's happening WF`);
 });
 
