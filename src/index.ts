@@ -65,10 +65,4 @@ app.post('/amex', async (req, res) => {
   res.send(`It's happening Amex`);
 });
 
-// Test webhook endpoint.
-app.post('/result', async (req, res) => {
-  console.log(req.body)
-  return res.send({})
-});
-
 app.listen(3200, '127.0.0.1');
