@@ -2,6 +2,7 @@ import bodyParser from 'body-parser';
 import chaseScraper from './chase-scraper';
 import bofaScraper from './bofa-scraper';
 import wfScraper from './wf-scraper';
+import amexScraper from './amex-scraper';
 import express from 'express';
 import fetch from 'node-fetch';
 
@@ -52,6 +53,16 @@ app.post('/wf', async (req, res) => {
     .then(res => res.json())
     .catch(err => console.log(err))
   res.send(`It's happening WF`);
+});
+
+app.post('/amex', async (req, res) => {
+  console.log("scraping amex");
+  amexScraper
+    .scrape(req.body.creds)
+    .then(postToWebhook(req.body.webhookURL))
+    .then(res => res.json())
+    .catch(err => console.log(err))
+  res.send(`It's happening Amex`);
 });
 
 app.listen(3200, '127.0.0.1');
