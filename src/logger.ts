@@ -7,7 +7,7 @@ class Logger {
   }
 
   log(m: Object | string) {
-    var logObj;
+    var logObj: Object;
     var ts = new Date();
     if (typeof m === "string") {
       logObj = { timestamp: ts, msg: m };

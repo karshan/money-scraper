@@ -1,11 +1,13 @@
-const fs = require('fs');
+import fs from 'fs'
+import type { Frame, Page, HTTPResponse, HTTPRequest } from 'puppeteer';
+import Logger from './logger';
 
 // log network requests made by puppeteer
 // usage: page.on('response', responseLogger);
-function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
-  return async function (response) {
+function responseLogger(urlWhiteRegex: RegExp, urlBlackRegex: RegExp, logger: Logger) {
+  return async function (response: HTTPResponse) {
     var request = response.request();
-    var responseBody, resp;
+    var responseBody: Buffer, resp: string;
     if (urlWhiteRegex.test(request.url()) && !urlBlackRegex.test(request.url())) {
 
       try {
@@ -23,16 +25,13 @@ function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
       }
 
       if (responseBody) {
-        resp = {
-          responseLength: responseBody.length,
-          response: responseBody.toString('ascii').substring(0, 1000),
-        }
+        resp = responseBody.toString('ascii').substring(0, 1000)
       }
 
       logger.log({
         url: request.url(),
         method: request.method(),
-        resp,
+        truncatedResponse: resp,
         responseHeaders: response.headers(),
         postData
       });
@@ -42,7 +41,7 @@ function responseLogger(urlWhiteRegex, urlBlackRegex, logger) {
 
 // wait for an element identified by a CSS selector (sel) in an iframe (frame)
 // to appear and then click it. frame: puppeteer.Frame
-async function frameWaitAndClick(frame, sel) {
+async function frameWaitAndClick(frame: Frame, sel: string) {
   try {
     await frame.waitForSelector(sel, { visible: true });
     const toClick = await frame.$(sel);
@@ -57,7 +56,7 @@ async function frameWaitAndClick(frame, sel) {
 
 // wait for an element identified by a CSS selector (sel) in a puppeteer page
 // to appear and then click it.
-async function waitAndClick(page, sel, logger) {
+async function waitAndClick(page: Page, sel: string, logger: Logger) {
   try {
     logger.log(`waitAndClick(${sel}) START`);
     await page.waitForSelector(sel, { visible: true });
@@ -71,10 +70,10 @@ async function waitAndClick(page, sel, logger) {
   }
 }
 
-function promiseTimeout(ms, promise) {
+function promiseTimeout(ms: number, promise: Promise<any>) {
   // Create a promise that rejects in <ms> milliseconds
-  let id;
-  let timeout = new Promise((resolve, reject) => {
+  let id: NodeJS.Timeout;
+  let timeout = new Promise((_, reject) => {
     id = setTimeout(() => {
       const msg = 'Timed out in ' + ms + 'ms.';
       reject(msg);
@@ -91,11 +90,11 @@ function promiseTimeout(ms, promise) {
   })
 }
 
-function waitForResponse(page, predicate, logger) {
-  return promiseTimeout(30000, new Promise(function (resolve, reject) {
-    var responseHandler = function (response) {
+function waitForResponse(page: Page, predicate:(a: HTTPRequest, b: HTTPResponse) => boolean, logger: Logger) {
+  return promiseTimeout(30000, new Promise(function (resolve, _) {
+    var responseHandler = function (response: HTTPResponse) {
       if (predicate(response.request(), response)) {
-        page.removeListener('response', responseHandler);
+        page.off('response', responseHandler);
         logger.log(`waitForResponse(url: ${response.request().url()}) END`);
         resolve(response);
       }
@@ -104,17 +103,17 @@ function waitForResponse(page, predicate, logger) {
   }).then((response: { buffer: Function }) => response.buffer()));
 }
 
-function waitForUrlRegex(page, urlRegex, logger) {
+function waitForUrlRegex(page: Page, urlRegex: RegExp, logger: Logger) {
   logger.log(`waitForUrlRegex(${urlRegex}) START`);
-  return waitForResponse(page, (req, resp) => urlRegex.test(req.url()), logger).catch((e) => {
+  return waitForResponse(page, (req, _) => urlRegex.test(req.url()), logger).catch((e) => {
     logger.log(`waitForUrlRegex(${urlRegex}) TIMEOUT`);
     throw e;
   });
 }
 
-function waitForFileCreation(dir, fileRegex, logger) {
+function waitForFileCreation(dir: fs.PathLike, fileRegex: RegExp, logger: Logger) {
   logger.log(`waitForFileCreation(${dir}, ${fileRegex}) START`);
-  return promiseTimeout(15000, new Promise(function (resolve, reject) {
+  return promiseTimeout(15000, new Promise(function (resolve, _) {
     const watcher = fs.watch(dir, (eventType, filename) => {
       if (eventType == "change" && fileRegex.test(filename)) {
         watcher.close();
@@ -125,7 +124,7 @@ function waitForFileCreation(dir, fileRegex, logger) {
   }));
 }
 
-function readFile(filename) {
+function readFile(filename: fs.PathLike) {
   return new Promise(function (resolve, reject) {
     fs.readFile(filename, (err, data) => {
       if (err) reject(err);
@@ -134,7 +133,7 @@ function readFile(filename) {
   })
 }
 
-function unlink(filename): Promise<void> {
+function unlink(filename: fs.PathLike): Promise<void> {
   return new Promise(function (resolve, reject) {
     fs.unlink(filename, (err) => {
       if (err) reject(err);

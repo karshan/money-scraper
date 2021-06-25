@@ -1,8 +1,8 @@
 import Logger from './logger';
 import puppeteer from 'puppeteer';
+import type { Page } from 'puppeteer';
 import util from './util';
 
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
 const DOWNLOAD_DIR = './downloads/';
 const CSV_REGEX = new RegExp("\.csv$", "i");
 
@@ -19,19 +19,24 @@ const SIGN_IN_BUTTON2_SEL = "[data-testid=signon-button]"
 
 const ACCOUNTS_SEL = "[data-testid=account-list]"
 
-type StateTag = "INITIAL" | "LOGIN2" | "DONE" | "ACCOUNTS"
+enum StateTag {
+    INITIAL,
+    LOGIN2,
+    DONE,
+    ACCOUNTS
+}
 type State = { tag: StateTag, numAttempts: number }
 
-type Creds = { username: string, password: string, secretQuestionAnswers: Object }
+type Creds = { username: string, password: string }
 
-async function login(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
+async function login(state: State, page: Page, creds: Creds, logger: Logger): Promise<{ state: State, output: any }> {
   try {
     await page.goto(LOGIN_PAGE_URL);
   } catch (e) {
     logger.log('initial nav timed out');
   }
 
-  await page.waitFor(10000);
+  await page.waitForTimeout(10000);
 
   await util.waitAndClick(page, USERNAME_SEL, logger);
   logger.log(USERNAME_SEL + ' resolved');
@@ -45,15 +50,15 @@ async function login(state: State, page, creds, logger: Logger): Promise<{ state
     util.waitAndClick(page, SIGN_IN_BUTTON_SEL, logger)
   ]);
 
-  const pageAfterLogin = await Promise.race([
-    page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
-    page.waitForSelector(USERNAME2_SEL).then((r) => "LOGIN2"),
+  const pageAfterLogin: StateTag = await Promise.race([
+    page.waitForSelector(ACCOUNTS_SEL).then((_) => StateTag.ACCOUNTS),
+    page.waitForSelector(USERNAME2_SEL).then((_) => StateTag.LOGIN2),
   ])
 
   return { state: { tag: pageAfterLogin, numAttempts: state.numAttempts }, output: null }
 }
 
-async function login2(state: State, page, creds, logger: Logger): Promise<{ state: State, output: any }> {
+async function login2(state: State, page: Page, creds: Creds, logger: Logger): Promise<{ state: State, output: any }> {
   await util.waitAndClick(page, USERNAME2_SEL, logger);
   await page.keyboard.type(creds.username);
 
@@ -66,17 +71,17 @@ async function login2(state: State, page, creds, logger: Logger): Promise<{ stat
   ]);
 
   const pageAfterLogin = await Promise.race([
-    page.waitForSelector(ACCOUNTS_SEL).then((r) => "ACCOUNTS"),
-    page.waitForSelector(USERNAME2_SEL).then((r) => "LOGIN2"),
+    page.waitForSelector(ACCOUNTS_SEL).then((_) => StateTag.ACCOUNTS),
+    page.waitForSelector(USERNAME2_SEL).then((_) => StateTag.LOGIN2),
   ])
 
   var outAttempts = state.numAttempts;
-  if (pageAfterLogin == "LOGIN2") outAttempts++;
+  if (pageAfterLogin == StateTag.LOGIN2) outAttempts++;
 
   return { state: { tag: pageAfterLogin, numAttempts: outAttempts }, output: null }
 }
 
-async function performDownloads(state, page, logger): Promise<{ state: State, output: any }> {
+async function performDownloads(state: State, page: Page, logger: Logger): Promise<{ state: State, output: any }> {
   var numAccounts = await page.evaluate((sel) => {
     return document.querySelector(sel).children[0].children.length;
   }, ACCOUNTS_SEL);
@@ -126,7 +131,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
   }
 
   logger.log('downloadStr = ' + downloadStr);
-  await page.waitFor(10000);
+  await page.waitForTimeout(10000);
 
   const navP2 = page.waitForNavigation();
   await util.waitAndClick(page, '.transaction-links > ul > li > a', logger);
@@ -160,7 +165,7 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
     });
   }
 
-  return { state: { tag: "DONE", numAttempts: state.numAttempts }, output: downloadedData }
+  return { state: { tag: StateTag.DONE, numAttempts: state.numAttempts }, output: downloadedData }
 }
 
 // TODO annotate return type
@@ -197,21 +202,21 @@ async function scrape(creds: Creds) {
 
   await page.setViewport({ width: 1920, height: 1080 });
 
-  var state: State = { tag: "INITIAL", numAttempts: 0 };
+  var state: State = { tag: StateTag.INITIAL, numAttempts: 0 };
   var output;
 
   try {
-    while (state.tag != "DONE") {
+    while (state.tag != StateTag.DONE) {
       if (state.numAttempts > 5) { logger.log("TOO MANY ATTEMPTS"); break; }
       logger.log({ state });
       switch (state.tag) {
-        case "INITIAL":
+        case StateTag.INITIAL:
           ({ state, output } = await login(state, page, creds, logger));
           break;
-        case "LOGIN2":
+        case StateTag.LOGIN2:
           ({ state, output } = await login2(state, page, creds, logger));
           break;
-        case "ACCOUNTS":
+        case StateTag.ACCOUNTS:
           ({ state, output } = await performDownloads(state, page, logger));
           break;
       }
@@ -222,9 +227,9 @@ async function scrape(creds: Creds) {
       log: logger.getLog()
     };
   } catch (e) {
-    var screenshot, domscreenshot;
+    var screenshot: string, domscreenshot: string;
     try {
-      let screenshot = (await page.screenshot() as any).toString();
+      screenshot = (await page.screenshot() as any).toString();
       domscreenshot = await page.evaluate(`document.querySelector("body").innerHTML`);
     } catch (e) {
     } finally {
