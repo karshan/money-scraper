@@ -142,6 +142,15 @@ function unlink(filename: fs.PathLike): Promise<void> {
   });
 }
 
+function mkdir(path: fs.PathLike): Promise<void> {
+  return new Promise(function (resolve, reject) {
+    fs.mkdir(path, (err) => {
+      if (err) reject(err);
+      resolve();
+    })
+  });
+}
+
 export default {
   responseLogger: responseLogger,
   frameWaitAndClick: frameWaitAndClick,
@@ -151,5 +160,6 @@ export default {
   waitForUrlRegex: waitForUrlRegex,
   waitForFileCreation: waitForFileCreation,
   readFile: readFile,
-  unlink: unlink
+  unlink: unlink,
+  mkdir: mkdir
 }

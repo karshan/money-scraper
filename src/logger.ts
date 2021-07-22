@@ -1,8 +1,10 @@
 class Logger {
   debug: boolean;
-  buffer: Array<Object>
-  constructor(logToConsole: boolean) {
+  buffer: Array<Object>;
+  prefix: string;
+  constructor(logToConsole: boolean, prefix: string) {
     this.debug = logToConsole;
+    this.prefix = prefix;
     this.buffer = [];
   }
 
@@ -21,9 +23,9 @@ class Logger {
 
     if (this.debug === true) {
       if (typeof m === "string") {
-        console.log(m);
+        console.log(this.prefix + ": " + m);
       } else {
-        console.log(JSON.stringify(m, null, 2).substring(0, 2000));
+        console.log(this.prefix + ": " + JSON.stringify(m, null, 2).substring(0, 2000));
       }
     }
   }

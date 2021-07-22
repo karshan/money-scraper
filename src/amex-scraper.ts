@@ -124,12 +124,12 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
 // TODO annotate return type
 async function scrape(creds: Creds) {
-    var logger = new Logger(true);
-
     if (typeof creds.username !== "string" ||
         typeof creds.password !== "string") {
         return { ok: false, error: 'bad creds' };
     }
+
+    var logger = new Logger(true, "AMEX<" + creds.username + ">");
 
     /*
      * TODO: is a fixed userDataDir safe for concurrent use ?

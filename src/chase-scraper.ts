@@ -1,8 +1,7 @@
 const https = require('https');
-const Logger = require('./logger');
-const puppeteer = require('puppeteer-extra');
-
-const util = require('./util');
+import Logger from './logger'
+import puppeteer from 'puppeteer';
+import util from './util'
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36"
 const DOWNLOAD_DIR = './downloads/';
@@ -29,6 +28,9 @@ async function login(page, creds, logger) {
     logger.log("initial nav timed out, bah whatever: " + e.toString());
   }
 
+  // ??? why is page.goto not waiting?
+  await page.waitForTimeout(10000);
+
   // Detect if we are already logged in.
   const isLoggedIn = await Promise.race([
     page.waitForSelector('#' + LOGIN_IFRAME_NAME).then((r) => false),
@@ -37,7 +39,7 @@ async function login(page, creds, logger) {
 
   if (isLoggedIn) {
     logger.log("already logged in");
-    page.waitFor(5000);
+    page.waitForTimeout(5000);
     try {
       await Promise.race([
         page.waitForSelector('.account-tile').then((r) => true),
@@ -58,7 +60,7 @@ async function login(page, creds, logger) {
     }
   }
 
-  await page.waitFor(5000);
+  await page.waitForTimeout(5000);
 
   await util.frameWaitAndClick(logonbox, USERNAME_SEL);
   logger.log(USERNAME_SEL + ' resolved');
@@ -131,7 +133,7 @@ async function performRequests(page, logger) {
     req.on('error', (e) => reject("/tiles/list failed with: " + JSON.stringify(e)))
     req.write(body);
   });
-  logger.log({ appDataRaw: appDataRaw });
+  // logger.log({ appDataRaw: appDataRaw });
 
   var accountTiles;
   try {
@@ -171,7 +173,7 @@ async function performRequests(page, logger) {
       req.write(body);
     });
     logger.log(`/card/list[${i}] END`);
-    logger.log({ jsonTransactions: jsonTransactions });
+    // logger.log({ jsonTransactions: jsonTransactions });
     const parsedTs = JSON.parse(jsonTransactions);
     // TODO: if transactions.status == 504 there was a temporary failure. Retry ?
     if (parsedTs.status && parsedTs.status == 403) {
@@ -183,11 +185,11 @@ async function performRequests(page, logger) {
 }
 
 async function scrape(creds) {
-  var logger = new Logger(true);
-
   if (typeof creds.username !== "string" || typeof creds.password !== "string") {
     return { ok: false, error: 'bad creds' };
   }
+
+  var logger = new Logger(true, "Chase<" + creds.username + ">");
 
   /*
    * TODO: is a fixed userDataDir safe for concurrent use ?
@@ -201,11 +203,6 @@ async function scrape(creds) {
     executablePath: '/k/gits/money-scraper/node_modules/puppeteer/.local-chromium/linux-895174/chrome-linux/chrome'
   });
   const page = await browser.newPage();
-
-  await page._client.send('Page.setDownloadBehavior', {
-    behavior: 'allow',
-    downloadPath: DOWNLOAD_DIR
-  });
 
   // await page.setViewport({ width: 1920, height: 1080 });
 
@@ -246,7 +243,8 @@ async function scrape(creds) {
   } catch (e) {
     var screenshot, domscreenshot;
     try {
-      screenshot = (await page.screenshot()).toString('base64');
+      var _scr: any = await page.screenshot();
+      screenshot = _scr.toString('base64');
       domscreenshot = await page.evaluate(() => document.querySelector("body").innerHTML);
     } catch (e) {
     } finally {

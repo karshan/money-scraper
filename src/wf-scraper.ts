@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer';
 import type { Page } from 'puppeteer';
 import util from './util';
 
-const DOWNLOAD_DIR = './downloads/';
+var DOWNLOAD_DIR = './downloads/';
 const CSV_REGEX = new RegExp("\.csv$", "i");
 
 // LoginPage Url
@@ -18,6 +18,7 @@ const PASSWORD2_SEL = "#j_password";
 const SIGN_IN_BUTTON2_SEL = "[data-testid=signon-button]"
 
 const ACCOUNTS_SEL = "[data-testid=account-list]"
+const CAPTCHA_SEL = "[aria-label='CAPTCHA challenge']"
 
 enum StateTag {
     INITIAL,
@@ -65,6 +66,16 @@ async function login2(state: State, page: Page, creds: Creds, logger: Logger): P
   await util.waitAndClick(page, PASSWORD2_SEL, logger);
   await page.keyboard.type(creds.password);
 
+  // FIXME detect captcha and solve it
+  var captchaElement = await page.evaluate((sel) => {
+    return document.querySelector(sel);
+  }, CAPTCHA_SEL);
+
+  if (captchaElement != null) {
+      logger.log("CAPTCHA REQUIRED!");
+      return { state: { tag: StateTag.DONE, numAttempts: state.numAttempts }, output: null };
+  }
+
   await Promise.all([
     page.waitForNavigation(),
     util.waitAndClick(page, SIGN_IN_BUTTON2_SEL, logger)
@@ -94,25 +105,34 @@ async function performDownloads(state: State, page: Page, logger: Logger): Promi
       return document.querySelector(sel).children[0].children[_i].getAttribute('data-testid');
     }, ACCOUNTS_SEL, i);
 
+    var accountType = "DEBIT";
+    if (/VISA SIGNATURE/.test(accountName)) {
+        accountType = "CREDIT";
+    }
+
     var accountBalance = 0;
     try {
       accountBalance = await page.evaluate((sel, _i) => {
-        return document.querySelector(sel).children[0].children[_i].children[0].children[0].children[1].children[0].innerText
+        return Number.parseFloat(document.querySelector(sel).children[0].children[_i].children[0].children[0].children[1].children[0].innerText.split('$')[1].replace(',',''))
       }, ACCOUNTS_SEL, i);
     } catch (e) {
     }
 
-    var accountId = null;
+    var accountNumber = null;
     try {
-      accountId = await page.evaluate((sel, _i) => {
-        return document.querySelector(sel).children[0].children[_i].querySelector('div > div').children[0].children[0].children[0].getAttribute('aria-labelledby').split(' ')[0]
+      accountNumber = await page.evaluate((sel, _i) => {
+        return document.querySelector(sel).children[0].children[_i].querySelector('div > div').children[0].children[0].innerText.split('...')[1]
       }, ACCOUNTS_SEL, i);
-    } catch (e) { }
+    } catch (e) {
+        logger.log("no accountNumber: " + JSON.stringify({name: accountName, _type: accountType, bal: accountBalance, e: e.toString()}));
+        throw "no accountnumber";
+    }
 
     nameBalance.push({
       name: accountName,
+      number: accountNumber,
+      _type: accountType,
       balance: accountBalance,
-      accountId: accountId
     });
   }
 
@@ -157,10 +177,12 @@ async function performDownloads(state: State, page: Page, logger: Logger): Promi
       await util.unlink(DOWNLOAD_DIR + csvFilename);
     }
 
+    logger.log({number : nameBalance[i].number, balance: nameBalance[i].balance });
     downloadedData.push({
       name: nameBalance[i].name,
       balance: nameBalance[i].balance,
-      accountId: nameBalance[i].accountId,
+      _type: nameBalance[i]._type,
+      number: nameBalance[i].number,
       csv: csvContents
     });
   }
@@ -170,12 +192,12 @@ async function performDownloads(state: State, page: Page, logger: Logger): Promi
 
 // TODO annotate return type
 async function scrape(creds: Creds) {
-  var logger = new Logger(true);
-
   if (typeof creds.username !== "string" ||
     typeof creds.password !== "string") {
     return { ok: false, error: 'bad creds' };
   }
+
+  var logger = new Logger(true, "WF<" + creds.username + ">");
 
   /*
    * TODO: is a fixed userDataDir safe for concurrent use ?
@@ -194,6 +216,13 @@ async function scrape(creds: Creds) {
   // FIXME a fixed download_dir is a problem for concurrent requests
   // because headless chrome doesn't download to filename (1) if
   // filename exists for some reason.
+  // FIXME path traversal vulnerability
+  DOWNLOAD_DIR = "./wf-" + creds.username + "-dl/"
+  try {
+      await util.mkdir(DOWNLOAD_DIR);
+  } catch(e) {
+      if (e.code != 'EEXIST') throw e;
+  }
   // @ts-ignore: Private member access error
   await page._client.send('Page.setDownloadBehavior', {
     behavior: 'allow',

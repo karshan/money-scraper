@@ -1,13 +1,13 @@
 const https = require('https');
 import Logger from './logger'
-const puppeteer = require('puppeteer');
-const util = require('./util');
+import puppeteer from 'puppeteer';
+import util from './util';
 const url = require('url');
 const vision = require('@google-cloud/vision');
 const visionClient = new vision.ImageAnnotatorClient();
 
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36";
-const DOWNLOAD_DIR = './downloads/';
+var DOWNLOAD_DIR = './downloads/';
 const CSV_REGEX = new RegExp("\.csv$", "i");
 
 // login page
@@ -52,7 +52,7 @@ async function login(state: State, page, creds, logger: Logger): Promise<{ state
     logger.log('initial nav timed out');
   }
 
-  await page.waitFor(10000);
+  await page.waitForTimeout(10000);
 
   await util.waitAndClick(page, USERNAME_SEL, logger);
   logger.log(USERNAME_SEL + ' resolved');
@@ -112,24 +112,24 @@ async function performCaptcha(state: State, page, logger: Logger): Promise<{ sta
   var captcha: string, ocrResponse: Object, ocrText: string;
 
   await page.waitForSelector(CAPTCHA_IMG_SEL);
-  await page.waitFor((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
+  await page.waitForFunction((sel) => document.querySelector(sel).complete, {}, CAPTCHA_IMG_SEL);
   const natWidth: any = await page.evaluate((sel) => document.querySelector(sel).naturalWidth, CAPTCHA_IMG_SEL);
   logger.log({ natWidth });
 
   if (natWidth === 0) { // Img loaded with error
     logger.log("Captcha did not load...");
-    await page.waitFor(1000);
+    await page.waitForTimeout(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
   // The captcha image is completely white sometimes, maybe some other loading goes on, wait 1 second ?
-  await page.waitFor(1000);
+  await page.waitForTimeout(1000);
   captcha = (await (await page.$(CAPTCHA_IMG_SEL)).screenshot()).toString('base64');
   logger.log({ captcha });
   ocrResponse = await visionClient.textDetection({ image: { content: captcha } })
   if (!ocrResponse[0] || !ocrResponse[0].fullTextAnnotation || !ocrResponse[0].fullTextAnnotation.text) {
     logger.log({ ocrResponse, error: "OCR didn't detect any fullText" });
-    page.waitFor(1000);
+    page.waitForTimeout(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
@@ -138,7 +138,7 @@ async function performCaptcha(state: State, page, logger: Logger): Promise<{ sta
 
   if (ocrText.length != 6) {
     logger.log({ ocrText, ocrResponse, error: "ocrText.length != 6" });
-    page.waitFor(1000);
+    page.waitForTimeout(1000);
     return { state: { tag: "INITIAL", numAttempts: state.numAttempts + 1 }, output: null };
   }
 
@@ -286,13 +286,13 @@ async function performDownloads(state, page, logger): Promise<{ state: State, ou
 
 // TODO annotate return type
 async function scrape(creds: Creds) {
-  var logger = new Logger(true);
-
   if (typeof creds.username !== "string" ||
     typeof creds.password !== "string" ||
     typeof creds.secretQuestionAnswers !== "object") {
     return { ok: false, error: 'bad creds' };
   }
+
+  var logger = new Logger(true, "BofA<" + creds.username + ">");
 
   /*
    * TODO: is a fixed userDataDir safe for concurrent use ?
@@ -312,7 +312,14 @@ async function scrape(creds: Creds) {
   // FIXME a fixed download_dir is a problem for concurrent requests
   // because headless chrome doesn't download to filename (1) if
   // filename exists for some reason.
-  await page._client.send('Page.setDownloadBehavior', {
+  // FIXME path traversal vulnerability
+  DOWNLOAD_DIR = "./bofa-" + creds.username + "-dl/";
+  try {
+      await util.mkdir(DOWNLOAD_DIR);
+  } catch(e) {
+      if (e.code != 'EEXIST') throw e;
+  }
+  await page["_client"].send('Page.setDownloadBehavior', {
     behavior: 'allow',
     downloadPath: DOWNLOAD_DIR
   });
@@ -347,7 +354,8 @@ async function scrape(creds: Creds) {
   } catch (e) {
     var screenshot, domscreenshot;
     try {
-      screenshot = (await page.screenshot()).toString('base64');
+      var _scr: any = await page.screenshot();
+      screenshot = _scr.toString('base64');
       domscreenshot = await page.evaluate(`document.querySelector("body").innerHTML`);
     } catch (e) {
     } finally {
