@@ -32,6 +32,7 @@ password = lens (_.password <<< unwrap) $ \s b -> wrap $ _ { password = b } $ un
 
 data State =
     AttemptingLogin Int Page Regex
+  | TwoFactor Page
   | LoggedIn (Array Cookie)
 
 data ScrapeResult =

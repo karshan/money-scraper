@@ -8,6 +8,7 @@
   ],
   "dependencies": {
     "purescript-prelude": "^4.1.0",
+    "purescript-debug": "^4.0.0",
     "purescript-console": "^4.2.0",
     "purescript-toppokki": "git://github.com/karshan/purescript-toppokki#5ab934a34d292b303188dcc243c9a456d9f26bf9",
     "purescript-transformers": "^4.1.0",
